@@ -24,7 +24,7 @@
 #include <openarm_port/openarm_init.hpp>
 #include <periodic_timer_thread.hpp>
 #include <robot_state.hpp>
-#include <robocap_reader.hpp>
+#include <udp_joint_receiver.hpp>
 #include <thread>
 #include <yamlloader.hpp>
 
@@ -37,33 +37,33 @@ void signal_handler(int signal) {
     }
 }
 
-// Thread to read RoboCap data from shared memory
-class RoboCapThread : public PeriodicTimerThread {
+// Thread to read joint data from UDP
+class UdpReceiverThread : public PeriodicTimerThread {
 public:
-    RoboCapThread(std::shared_ptr<RobotSystemState> robot_state, RoboCapReader* reader,
-                  double hz = 500.0)
-        : PeriodicTimerThread(hz), robot_state_(robot_state), reader_(reader), update_count_(0) {}
+    UdpReceiverThread(std::shared_ptr<RobotSystemState> robot_state, UdpJointReceiver* receiver,
+                      double hz = 500.0)
+        : PeriodicTimerThread(hz), robot_state_(robot_state), receiver_(receiver), update_count_(0) {}
 
 protected:
     void before_start() override {
-        std::cout << "[RoboCapThread] Starting RoboCap data reader thread at " << get_frequency()
+        std::cout << "[UdpReceiverThread] Starting UDP data reader thread at " << get_frequency()
                   << " Hz" << std::endl;
     }
 
     void after_stop() override {
-        std::cout << "[RoboCapThread] Stopped. Total updates: " << update_count_ << std::endl;
+        std::cout << "[UdpReceiverThread] Stopped. Total updates: " << update_count_ << std::endl;
     }
 
     void on_timer() override {
         std::vector<double> joint_angles;
 
-        // Try to get new joint angles from shared memory
-        if (reader_->get_joint_angles(joint_angles)) {
+        // Try to get new joint angles from UDP
+        if (receiver_->get_joint_angles(joint_angles)) {
             // New data available - update robot state
             robot_state_->arm_state().set_all_references(joint_angles);
 
             // Update gripper
-            double gripper_pos = reader_->get_gripper_position();
+            double gripper_pos = receiver_->get_gripper_position();
             std::vector<double> gripper_ref = {gripper_pos};
             robot_state_->hand_state().set_all_references(gripper_ref);
 
@@ -71,8 +71,8 @@ protected:
 
             // Print status every 500 updates (~1 second at 500Hz)
             if (update_count_ % 500 == 0) {
-                std::cout << "[RoboCapThread] Updates: " << update_count_
-                          << " | Timestamp: " << reader_->get_timestamp()
+                std::cout << "[UdpReceiverThread] Updates: " << update_count_
+                          << " | Timestamp: " << receiver_->get_timestamp()
                           << " | Gripper: " << gripper_pos << std::endl;
             }
         }
@@ -81,7 +81,7 @@ protected:
 
 private:
     std::shared_ptr<RobotSystemState> robot_state_;
-    RoboCapReader* reader_;
+    UdpJointReceiver* receiver_;
     uint64_t update_count_;
 };
 
@@ -118,12 +118,13 @@ int main(int argc, char** argv) {
         std::string arm_side = "right_arm";
         std::string urdf_path;
         std::string can_interface = "can0";
+        int udp_port = 5678;
 
         if (argc < 2) {
-            std::cerr << "Usage: " << argv[0] << " <urdf_path> [arm_side] [can_interface]"
+            std::cerr << "Usage: " << argv[0] << " <urdf_path> [arm_side] [can_interface] [udp_port]"
                       << std::endl;
             std::cerr << "Example: " << argv[0]
-                      << " /path/to/openarm.urdf right_arm can0" << std::endl;
+                      << " /path/to/openarm.urdf right_arm can0 5678" << std::endl;
             return 1;
         }
 
@@ -145,6 +146,11 @@ int main(int argc, char** argv) {
             can_interface = argv[3];
         }
 
+        // Optional: UDP port
+        if (argc >= 5) {
+            udp_port = std::stoi(argv[4]);
+        }
+
         // Check URDF file exists
         if (!std::filesystem::exists(urdf_path)) {
             std::cerr << "[ERROR] URDF file not found: " << urdf_path << std::endl;
@@ -153,10 +159,11 @@ int main(int argc, char** argv) {
 
         // Print configuration
         std::cout << "========================================" << std::endl;
-        std::cout << "  RoboCap → OpenArm Teleoperation" << std::endl;
+        std::cout << "  UDP → OpenArm Teleoperation" << std::endl;
         std::cout << "========================================" << std::endl;
         std::cout << "Arm side       : " << arm_side << std::endl;
         std::cout << "CAN interface  : " << can_interface << std::endl;
+        std::cout << "UDP port       : " << udp_port << std::endl;
         std::cout << "URDF path      : " << urdf_path << std::endl;
         std::cout << "Control freq   : " << FREQUENCY << " Hz" << std::endl;
         std::cout << "========================================\n" << std::endl;
@@ -171,10 +178,10 @@ int main(int argc, char** argv) {
         arm_dynamics->Init();
         std::cout << "[INFO] ✅ Dynamics model initialized" << std::endl;
 
-        // Initialize RoboCap reader
-        std::cout << "\n[INFO] Connecting to RoboCap shared memory..." << std::endl;
-        std::cout << "[INFO] Make sure Python RoboCap writer is running!" << std::endl;
-        RoboCapReader robocap_reader;
+        // Initialize UDP receiver
+        std::cout << "\n[INFO] Starting UDP receiver on port " << udp_port << "..." << std::endl;
+        std::cout << "[INFO] Make sure joint data sender is running!" << std::endl;
+        UdpJointReceiver udp_receiver(udp_port, 7);  // 7 joints for OpenArm
 
         // Initialize OpenArm hardware
         std::cout << "\n[INFO] Initializing OpenArm hardware on " << can_interface << "..."
@@ -218,14 +225,14 @@ int main(int argc, char** argv) {
 
         // Create and start control threads
         std::cout << "\n[INFO] Starting control threads..." << std::endl;
-        RoboCapThread robocap_thread(robot_state, &robocap_reader, FREQUENCY);
+        UdpReceiverThread udp_thread(robot_state, &udp_receiver, FREQUENCY);
         FollowerArmThread follower_thread(robot_state, control, FREQUENCY);
 
-        robocap_thread.start_thread();
+        udp_thread.start_thread();
         follower_thread.start_thread();
 
-        std::cout << "\n🚀 RoboCap teleoperation is now ACTIVE!" << std::endl;
-        std::cout << "   Move your arm to control the robot" << std::endl;
+        std::cout << "\n🚀 UDP teleoperation is now ACTIVE!" << std::endl;
+        std::cout << "   Receiving joint angles via UDP on port " << udp_port << std::endl;
         std::cout << "   Press Ctrl+C to stop\n" << std::endl;
 
         // Main loop - just wait for interrupt
@@ -235,7 +242,7 @@ int main(int argc, char** argv) {
 
         // Shutdown sequence
         std::cout << "\n[INFO] Shutting down..." << std::endl;
-        robocap_thread.stop_thread();
+        udp_thread.stop_thread();
         follower_thread.stop_thread();
 
         std::cout << "[INFO] Disabling motors..." << std::endl;

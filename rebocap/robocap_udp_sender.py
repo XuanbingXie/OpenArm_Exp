@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-RoboCap Shared Memory Writer
-Reads data from RoboCap SDK and writes to shared memory for C++ OpenArm control
+RoboCap UDP Sender
+Reads data from RoboCap SDK and sends joint angles via UDP
 """
 
 import time
 import numpy as np
-from multiprocessing import shared_memory
-import struct
+import socket
+import json
 import sys
 import signal
 
@@ -16,56 +16,22 @@ sys.path.insert(0, '.')
 import rebocap_ws_sdk
 
 
-class RoboCapShmWriter:
-    """Writes RoboCap data to shared memory for C++ consumption"""
+class RoboCapUdpSender:
+    """Sends RoboCap joint angles via UDP"""
     
-    # Shared memory layout offsets (must match C++ struct)
-    OFFSET_SEQUENCE = 0
-    OFFSET_DATA_READY = 8
-    OFFSET_TIMESTAMP = 16
-    OFFSET_ARM_JOINTS = 24
-    OFFSET_GRIPPER = 80
-    OFFSET_SHOULDER_QUAT = 88
-    OFFSET_ELBOW_QUAT = 120
-    OFFSET_WRIST_QUAT = 152
-    OFFSET_HAND_QUAT = 184
-    OFFSET_PELVIS = 216
-    OFFSET_TOTAL_UPDATES = 240
-    OFFSET_LAST_UPDATE = 248
-    
-    def __init__(self, shm_name='robocap_openarm_data', port=7690):
-        self.shm_name = shm_name
-        self.port = port
-        self.sequence = 0
+    def __init__(self, udp_host='127.0.0.1', udp_port=5678, rebocap_port=7690):
+        self.udp_host = udp_host
+        self.udp_port = udp_port
+        self.rebocap_port = rebocap_port
         self.total_updates = 0
         self.running = True
         
-        # Create shared memory (512 bytes is enough)
-        try:
-            # Try to unlink existing shared memory first
-            try:
-                existing_shm = shared_memory.SharedMemory(name=shm_name)
-                existing_shm.close()
-                existing_shm.unlink()
-                print(f"[INFO] Cleaned up existing shared memory: {shm_name}")
-            except FileNotFoundError:
-                pass
-            
-            self.shm = shared_memory.SharedMemory(
-                name=shm_name,
-                create=True,
-                size=512
-            )
-            print(f"✅ Created shared memory: {shm_name} (size: 512 bytes)")
-        except Exception as e:
-            print(f"❌ Failed to create shared memory: {e}")
-            raise
-        
-        # Initialize shared memory to zeros
-        self.shm.buf[:] = bytes(512)
+        # Create UDP socket
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        print(f"✅ UDP socket created, sending to {udp_host}:{udp_port}")
         
         # Initialize RoboCap SDK
-        print(f"[INFO] Connecting to RoboCap on port {port}...")
+        print(f"[INFO] Connecting to RoboCap on port {rebocap_port}...")
         self.sdk = rebocap_ws_sdk.RebocapWsSdk(
             coordinate_type=rebocap_ws_sdk.CoordinateType.UnityCoordinate,
             use_global_rotation=True
@@ -73,13 +39,13 @@ class RoboCapShmWriter:
         self.sdk.set_pose_msg_callback(self.on_pose_data)
         self.sdk.set_exception_close_callback(self.on_exception_close)
         
-        ret = self.sdk.open(port)
+        ret = self.sdk.open(rebocap_port)
         if ret != 0:
             self.cleanup()
             raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
         
         print("✅ RoboCap connected successfully!")
-        print("📡 Writing motion capture data to shared memory...")
+        print(f"📡 Sending joint angles via UDP to {udp_host}:{udp_port}...")
         print("   Press Ctrl+C to stop\n")
         
         # Setup signal handler
@@ -110,56 +76,31 @@ class RoboCapShmWriter:
             # Estimate gripper position from hand orientation
             gripper_pos = self.estimate_gripper_position(r_hand)
             
-            # Write to shared memory
-            self.write_to_shm(ts, joint_angles, gripper_pos, 
-                            r_shoulder, r_elbow, r_wrist, r_hand, tran)
+            # Send via UDP
+            self.send_udp(ts, joint_angles, gripper_pos, tran)
             
             self.total_updates += 1
             
             # Print status every 60 frames (~1 second at 60Hz)
             if self.total_updates % 60 == 0:
                 print(f"[{self.total_updates:6d}] Joints: {[f'{j:6.3f}' for j in joint_angles]} | "
-                      f"Gripper: {gripper_pos:.3f} | Seq: {self.sequence}")
+                      f"Gripper: {gripper_pos:.3f}")
         
         except Exception as e:
             print(f"❌ Error in pose callback: {e}")
     
-    def write_to_shm(self, timestamp, joint_angles, gripper_pos,
-                     r_shoulder, r_elbow, r_wrist, r_hand, pelvis_pos):
-        """Write data to shared memory"""
-        buf = self.shm.buf
+    def send_udp(self, timestamp, joint_angles, gripper_pos, pelvis_pos):
+        """Send data via UDP as JSON"""
+        data = {
+            'timestamp': timestamp,
+            'joints': joint_angles,
+            'gripper': gripper_pos,
+            'pelvis': pelvis_pos
+        }
         
-        # Sequence number
-        self.sequence += 1
-        struct.pack_into('Q', buf, self.OFFSET_SEQUENCE, self.sequence)
-        
-        # Data ready flag
-        struct.pack_into('B', buf, self.OFFSET_DATA_READY, 1)
-        
-        # Timestamp
-        struct.pack_into('d', buf, self.OFFSET_TIMESTAMP, timestamp)
-        
-        # Right arm joints (7 doubles)
-        for i, angle in enumerate(joint_angles):
-            struct.pack_into('d', buf, self.OFFSET_ARM_JOINTS + i * 8, angle)
-        
-        # Gripper position
-        struct.pack_into('d', buf, self.OFFSET_GRIPPER, gripper_pos)
-        
-        # Raw quaternions (for debugging)
-        offset = self.OFFSET_SHOULDER_QUAT
-        for quat in [r_shoulder, r_elbow, r_wrist, r_hand]:
-            for val in quat:
-                struct.pack_into('d', buf, offset, val)
-                offset += 8
-        
-        # Pelvis position
-        for i, pos in enumerate(pelvis_pos):
-            struct.pack_into('d', buf, self.OFFSET_PELVIS + i * 8, pos)
-        
-        # Statistics
-        struct.pack_into('Q', buf, self.OFFSET_TOTAL_UPDATES, self.total_updates)
-        struct.pack_into('d', buf, self.OFFSET_LAST_UPDATE, time.time())
+        # Convert to JSON and send
+        json_data = json.dumps(data)
+        self.sock.sendto(json_data.encode('utf-8'), (self.udp_host, self.udp_port))
     
     def map_to_openarm_joints(self, shoulder, elbow, wrist, hand):
         """
@@ -191,9 +132,6 @@ class RoboCapShmWriter:
             wrist_euler[1],         # Joint 5: Wrist pitch
             wrist_euler[0],         # Joint 6: Wrist roll
         ]
-        
-        # Apply scaling and offset if needed
-        # joints = [self.apply_joint_limits(j, i) for i, j in enumerate(joints)]
         
         return joints
     
@@ -235,26 +173,10 @@ class RoboCapShmWriter:
         
         return gripper
     
-    def apply_joint_limits(self, angle, joint_idx):
-        """Apply joint limits and scaling (optional)"""
-        # Define joint limits for each joint (example values)
-        limits = [
-            (-np.pi, np.pi),      # Joint 0
-            (-np.pi/2, np.pi/2),  # Joint 1
-            (-np.pi, np.pi),      # Joint 2
-            (0, np.pi),           # Joint 3 (elbow)
-            (-np.pi, np.pi),      # Joint 4
-            (-np.pi/2, np.pi/2),  # Joint 5
-            (-np.pi, np.pi),      # Joint 6
-        ]
-        
-        min_angle, max_angle = limits[joint_idx]
-        return np.clip(angle, min_angle, max_angle)
-    
     def run(self):
         """Main loop"""
         try:
-            print("🚀 RoboCap teleoperation active!")
+            print("🚀 RoboCap UDP teleoperation active!")
             while self.running:
                 time.sleep(0.1)  # Data is updated in callback
         except KeyboardInterrupt:
@@ -272,9 +194,8 @@ class RoboCapShmWriter:
             pass
         
         try:
-            self.shm.close()
-            self.shm.unlink()
-            print(f"✅ Shared memory '{self.shm_name}' cleaned up")
+            self.sock.close()
+            print("✅ UDP socket closed")
         except:
             pass
         
@@ -283,16 +204,29 @@ class RoboCapShmWriter:
 
 def main():
     print("=" * 60)
-    print("  RoboCap → OpenArm Teleoperation (Shared Memory Writer)")
+    print("  RoboCap → OpenArm Teleoperation (UDP Sender)")
     print("=" * 60)
     print()
     
+    # Parse command line arguments
+    udp_host = '127.0.0.1'
+    udp_port = 5678
+    rebocap_port = 7690
+    
+    if len(sys.argv) >= 2:
+        udp_host = sys.argv[1]
+    if len(sys.argv) >= 3:
+        udp_port = int(sys.argv[2])
+    if len(sys.argv) >= 4:
+        rebocap_port = int(sys.argv[3])
+    
     try:
-        writer = RoboCapShmWriter(
-            shm_name='robocap_openarm_data',
-            port=7690
+        sender = RoboCapUdpSender(
+            udp_host=udp_host,
+            udp_port=udp_port,
+            rebocap_port=rebocap_port
         )
-        writer.run()
+        sender.run()
     except Exception as e:
         print(f"\n❌ Fatal error: {e}")
         return 1

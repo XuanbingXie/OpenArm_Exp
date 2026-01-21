@@ -42,12 +42,13 @@ class UdpReceiverThread : public PeriodicTimerThread {
 public:
     UdpReceiverThread(std::shared_ptr<RobotSystemState> robot_state, UdpJointReceiver* receiver,
                       double hz = 500.0)
-        : PeriodicTimerThread(hz), robot_state_(robot_state), receiver_(receiver), update_count_(0) {}
+        : PeriodicTimerThread(hz), robot_state_(robot_state), receiver_(receiver), 
+          update_count_(0), hz_(hz) {}
 
 protected:
     void before_start() override {
-        std::cout << "[UdpReceiverThread] Starting UDP data reader thread at " << get_frequency()
-                  << " Hz" << std::endl;
+        std::cout << "[UdpReceiverThread] Starting UDP data reader thread at " 
+                  << hz_ << " Hz" << std::endl;
     }
 
     void after_stop() override {
@@ -59,13 +60,22 @@ protected:
 
         // Try to get new joint angles from UDP
         if (receiver_->get_joint_angles(joint_angles)) {
-            // New data available - update robot state
-            robot_state_->arm_state().set_all_references(joint_angles);
+            // New data available - convert to JointState and update robot state
+            std::vector<JointState> joint_states(joint_angles.size());
+            for (size_t i = 0; i < joint_angles.size(); ++i) {
+                joint_states[i].position = joint_angles[i];
+                joint_states[i].velocity = 0.0;
+                joint_states[i].effort = 0.0;
+            }
+            robot_state_->arm_state().set_all_references(joint_states);
 
             // Update gripper
             double gripper_pos = receiver_->get_gripper_position();
-            std::vector<double> gripper_ref = {gripper_pos};
-            robot_state_->hand_state().set_all_references(gripper_ref);
+            std::vector<JointState> gripper_states(1);
+            gripper_states[0].position = gripper_pos;
+            gripper_states[0].velocity = 0.0;
+            gripper_states[0].effort = 0.0;
+            robot_state_->hand_state().set_all_references(gripper_states);
 
             update_count_++;
 
@@ -83,6 +93,7 @@ private:
     std::shared_ptr<RobotSystemState> robot_state_;
     UdpJointReceiver* receiver_;
     uint64_t update_count_;
+    double hz_;
 };
 
 // Thread to control the follower arm
@@ -90,12 +101,12 @@ class FollowerArmThread : public PeriodicTimerThread {
 public:
     FollowerArmThread(std::shared_ptr<RobotSystemState> robot_state, Control* control_f,
                       double hz = 500.0)
-        : PeriodicTimerThread(hz), robot_state_(robot_state), control_f_(control_f) {}
+        : PeriodicTimerThread(hz), robot_state_(robot_state), control_f_(control_f), hz_(hz) {}
 
 protected:
     void before_start() override {
-        std::cout << "[FollowerArmThread] Starting follower control thread at " << get_frequency()
-                  << " Hz" << std::endl;
+        std::cout << "[FollowerArmThread] Starting follower control thread at " 
+                  << hz_ << " Hz" << std::endl;
     }
 
     void after_stop() override { std::cout << "[FollowerArmThread] Stopped" << std::endl; }
@@ -108,6 +119,7 @@ protected:
 private:
     std::shared_ptr<RobotSystemState> robot_state_;
     Control* control_f_;
+    double hz_;
 };
 
 int main(int argc, char** argv) {

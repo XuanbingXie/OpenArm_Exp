@@ -18,10 +18,11 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <errno.h>
+#include <cstring>
 
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
@@ -71,8 +72,6 @@ public:
             close(socket_fd_);
             throw std::runtime_error("Failed to bind UDP socket to port " + std::to_string(port_));
         }
-
-        std::cout << "[UdpJointReceiver] ✅ UDP socket bound to port " << port_ << std::endl;
 
         // Start receiver thread
         running_ = true;
@@ -162,6 +161,8 @@ private:
         char buffer[65535];
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
+        
+        std::cout << "[UdpJointReceiver] Receive loop started" << std::endl;
 
         while (running_) {
             ssize_t recv_len = recvfrom(socket_fd_, buffer, sizeof(buffer) - 1, 0,
@@ -169,16 +170,37 @@ private:
 
             if (recv_len > 0) {
                 buffer[recv_len] = '\0';
+                
+                // Debug: print first packet info
+                static bool first_packet = true;
+                if (first_packet) {
+                    std::cout << "[UdpJointReceiver] First packet received! " 
+                              << recv_len << " bytes from " 
+                              << inet_ntoa(client_addr.sin_addr) << ":" 
+                              << ntohs(client_addr.sin_port) << std::endl;
+                    first_packet = false;
+                }
+                
                 process_data(buffer, recv_len);
-            } else {
-                // No data available, sleep briefly
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            } else if (recv_len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+                std::cerr << "[UdpJointReceiver] recvfrom error: " << strerror(errno) << std::endl;
             }
+            
+            // No data available, sleep briefly
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
+        
+        std::cout << "[UdpJointReceiver] Receive loop stopped" << std::endl;
     }
 
     void process_data(const char* data, size_t length) {
         try {
+            // Debug: print raw data
+            if (sequence_number_ < 3) {
+                std::cout << "[UdpJointReceiver] Raw data (" << length << " bytes): " 
+                          << std::string(data, std::min(length, size_t(100))) << "..." << std::endl;
+            }
+            
             // Parse JSON
             json j = json::parse(std::string(data, length));
 
@@ -189,7 +211,12 @@ private:
                 auto joints_array = j["joints"].get<std::vector<double>>();
                 if (joints_array.size() == num_joints_) {
                     joint_angles_ = joints_array;
+                } else {
+                    std::cerr << "[UdpJointReceiver] Warning: Expected " << num_joints_ 
+                              << " joints, got " << joints_array.size() << std::endl;
                 }
+            } else {
+                std::cerr << "[UdpJointReceiver] Warning: No 'joints' field in JSON" << std::endl;
             }
 
             // Extract gripper position
@@ -211,15 +238,9 @@ private:
             sequence_number_++;
             data_ready_ = true;
 
-            // Print status every 500 updates
-            if (sequence_number_ % 500 == 0) {
-                std::cout << "[UdpJointReceiver] Updates: " << sequence_number_
-                          << " | Timestamp: " << timestamp_ << " | Gripper: " << gripper_position_
-                          << std::endl;
-            }
-
         } catch (const std::exception& e) {
             std::cerr << "[UdpJointReceiver] Parse error: " << e.what() << std::endl;
+            std::cerr << "[UdpJointReceiver] Data: " << std::string(data, std::min(length, size_t(200))) << std::endl;
         }
     }
 

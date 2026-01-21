@@ -169,17 +169,6 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        // Print configuration
-        std::cout << "========================================" << std::endl;
-        std::cout << "  UDP → OpenArm Teleoperation" << std::endl;
-        std::cout << "========================================" << std::endl;
-        std::cout << "Arm side       : " << arm_side << std::endl;
-        std::cout << "CAN interface  : " << can_interface << std::endl;
-        std::cout << "UDP port       : " << udp_port << std::endl;
-        std::cout << "URDF path      : " << urdf_path << std::endl;
-        std::cout << "Control freq   : " << FREQUENCY << " Hz" << std::endl;
-        std::cout << "========================================\n" << std::endl;
-
         // Setup dynamics
         std::string root_link = "openarm_body_link0";
         std::string leaf_link =
@@ -243,9 +232,7 @@ int main(int argc, char** argv) {
         udp_thread.start_thread();
         follower_thread.start_thread();
 
-        std::cout << "\n🚀 UDP teleoperation is now ACTIVE!" << std::endl;
         std::cout << "   Receiving joint angles via UDP on port " << udp_port << std::endl;
-        std::cout << "   Press Ctrl+C to stop\n" << std::endl;
 
         // Main loop - just wait for interrupt
         while (keep_running) {
@@ -253,14 +240,11 @@ int main(int argc, char** argv) {
         }
 
         // Shutdown sequence
-        std::cout << "\n[INFO] Shutting down..." << std::endl;
         udp_thread.stop_thread();
         follower_thread.stop_thread();
-
-        std::cout << "[INFO] Disabling motors..." << std::endl;
         openarm->disable_all();
 
-        std::cout << "[INFO] ✅ Shutdown complete" << std::endl;
+        std::cout << "[INFO] Shutdown complete" << std::endl;
 
         // Cleanup
         delete control;

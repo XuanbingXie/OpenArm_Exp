@@ -127,9 +127,9 @@ int main(int argc, char** argv) {
         std::signal(SIGINT, signal_handler);
 
         // Parse command line arguments
-        std::string arm_side = "right_arm";
+        std::string arm_side = "left_arm";
         std::string urdf_path;
-        std::string can_interface = "can0";
+        std::string can_interface = "can1";
         int udp_port = 5678;
 
         if (argc < 2) {

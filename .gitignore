@@ -1,4 +1,5 @@
-install
+install/
 build 
 log  
 .cache
+./openarm_teleop/build

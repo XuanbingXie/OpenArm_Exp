@@ -19,7 +19,7 @@ import rebocap_ws_sdk
 class RoboCapUdpSender:
     """Sends RoboCap joint angles via UDP"""
     
-    def __init__(self, udp_host='127.0.0.1', udp_port=5678, rebocap_port=7690):
+    def __init__(self, udp_host='255.255.255.255', udp_port=5678, rebocap_port=7690):
         self.udp_host = udp_host
         self.udp_port = udp_port
         self.rebocap_port = rebocap_port
@@ -69,6 +69,7 @@ class RoboCapUdpSender:
             r_hand = pose24[23]      # R_Hand
             
             # Convert quaternions to OpenArm joint angles
+            # ----------------Developing-----------------
             joint_angles = self.map_to_openarm_joints(
                 r_shoulder, r_elbow, r_wrist, r_hand
             )
@@ -102,6 +103,7 @@ class RoboCapUdpSender:
         json_data = json.dumps(data)
         self.sock.sendto(json_data.encode('utf-8'), (self.udp_host, self.udp_port))
     
+    #--------------------Developing-----------------
     def map_to_openarm_joints(self, shoulder, elbow, wrist, hand):
         """
         Map RoboCap quaternions to OpenArm 7-DOF joint angles
@@ -209,7 +211,7 @@ def main():
     print()
     
     # Parse command line arguments
-    udp_host = '127.0.0.1'
+    udp_host = '255.255.255.255' ## Default to broadcast
     udp_port = 5678
     rebocap_port = 7690
     

@@ -41,7 +41,7 @@ void signal_handler(int signal) {
 class UdpReceiverThread : public PeriodicTimerThread {
 public:
     UdpReceiverThread(std::shared_ptr<RobotSystemState> robot_state, UdpJointReceiver* receiver,
-                      double hz = 500.0)
+                      double hz = 100.0)
         : PeriodicTimerThread(hz), robot_state_(robot_state), receiver_(receiver), 
           update_count_(0), hz_(hz) {}
 
@@ -100,7 +100,7 @@ private:
 class FollowerArmThread : public PeriodicTimerThread {
 public:
     FollowerArmThread(std::shared_ptr<RobotSystemState> robot_state, Control* control_f,
-                      double hz = 500.0)
+                      double hz = 1000.0)
         : PeriodicTimerThread(hz), robot_state_(robot_state), control_f_(control_f), hz_(hz) {}
 
 protected:
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
 
         // Create control instance
         Control* control = new Control(openarm, arm_dynamics, arm_dynamics, robot_state,
-                                       1.0 / FREQUENCY, ROLE_FOLLOWER, arm_side, arm_motor_num,
+                                       1.0 / FOLLOW_FREQUENCY, ROLE_FOLLOWER, arm_side, arm_motor_num,
                                        hand_motor_num);
 
         // Load control parameters from YAML
@@ -226,8 +226,8 @@ int main(int argc, char** argv) {
 
         // Create and start control threads
         std::cout << "\n[INFO] Starting control threads..." << std::endl;
-        UdpReceiverThread udp_thread(robot_state, &udp_receiver, FREQUENCY);
-        FollowerArmThread follower_thread(robot_state, control, FREQUENCY);
+        UdpReceiverThread udp_thread(robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY);
+        FollowerArmThread follower_thread(robot_state, control, FOLLOW_FREQUENCY);
 
         udp_thread.start_thread();
         follower_thread.start_thread();

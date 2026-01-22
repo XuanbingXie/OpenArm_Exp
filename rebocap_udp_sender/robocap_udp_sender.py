@@ -10,11 +10,19 @@ import socket
 import json
 import sys
 import signal
+from scipy.spatial.transform import Rotation as R
+import math
 
 # Add rebocap SDK to path
 sys.path.insert(0, '.')
 import rebocap_ws_sdk
 
+
+def xyzw2wxyz(quat):
+    res = np.zeros_like(quat)
+    res[0] = quat[-1]
+    res[1:] = quat[:-1]
+    return res
 
 class RoboCapUdpSender:
     """Sends RoboCap joint angles via UDP"""
@@ -44,6 +52,27 @@ class RoboCapUdpSender:
             self.cleanup()
             raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
         
+        ## Set min value and max value of joints (based on openarm_constants.hpp)
+        PI = math.pi
+        self.joints_min_value = [
+            -(2.0 / 3.0) * PI,  # joint 0
+            -PI / 2.0,          # joint 1
+            -PI / 2.0,          # joint 2
+            0.0,                # joint 3 (ELBOWLIMIT)
+            -PI / 2.0,          # joint 4
+            -PI / 2.0,          # joint 5
+            -PI / 2.0           # joint 6
+        ]
+        self.joints_max_value = [
+            (2.0 / 3.0) * PI,   # joint 0
+            PI,                 # joint 1
+            PI / 2.0,           # joint 2
+            PI,                 # joint 3
+            PI / 2.0,           # joint 4
+            PI / 2.0,           # joint 5
+            PI / 2.0            # joint 6
+        ]
+
         print("✅ RoboCap connected successfully!")
         print(f"📡 Sending joint angles via UDP to {udp_host}:{udp_port}...")
         print("   Press Ctrl+C to stop\n")
@@ -106,34 +135,23 @@ class RoboCapUdpSender:
     #--------------------Developing-----------------
     def map_to_openarm_joints(self, shoulder, elbow, wrist, hand):
         """
-        Map RoboCap quaternions to OpenArm 7-DOF joint angles
-        
-        OpenArm joint order (typical 7-DOF arm):
-        0: Shoulder yaw (rotation around vertical axis)
-        1: Shoulder pitch (up/down)
-        2: Shoulder roll (arm rotation)
-        3: Elbow pitch (bend)
-        4: Wrist yaw (rotation)
-        5: Wrist pitch (up/down)
-        6: Wrist roll (hand rotation)
+        Map RoboCap quaternions to OpenArm 7-DOF joint angles        
         """
-        # Convert quaternions to Euler angles
-        shoulder_euler = self.quat_to_euler(shoulder)
-        elbow_euler = self.quat_to_euler(elbow)
-        wrist_euler = self.quat_to_euler(wrist)
+        r_shoulder = R.from_quat(shoulder, scalar_first=False)
+        j1, j2, j3 = r_shoulder.as_euler('XYX')
+        j2 = j2-np.pi/2
+        r_elbow = R.from_quat(elbow, scalar_first=False)
+        z, _, x = r_elbow.as_euler('ZYX')
+        j4 = -z
+        j5 = (x + np.pi/2)
+        r_wrist = R.from_quat(wrist, scalar_first=False)
+        z, y, _ = r_wrist.as_euler('ZYX')
+        j6 = z
+        j7 = -y
         
         # Map to OpenArm joints
-        # NOTE: This mapping needs to be calibrated based on your specific setup!
-        # You may need to adjust signs, offsets, and scaling factors
-        joints = [
-            shoulder_euler[2],      # Joint 0: Shoulder yaw
-            shoulder_euler[1],      # Joint 1: Shoulder pitch
-            shoulder_euler[0],      # Joint 2: Shoulder roll
-            elbow_euler[1],         # Joint 3: Elbow pitch
-            wrist_euler[2],         # Joint 4: Wrist yaw
-            wrist_euler[1],         # Joint 5: Wrist pitch
-            wrist_euler[0],         # Joint 6: Wrist roll
-        ]
+        joints = [j1, j2, j3, j4, j5, j6, j7]
+        joints = np.clip(joints, self.joints_min_value, self.joints_max_value).tolist()
         
         return joints
     
@@ -171,7 +189,7 @@ class RoboCapUdpSender:
         
         # Map roll angle to gripper position (0 = closed, 1 = open)
         # Adjust these values based on your hand gestures
-        gripper = np.clip((roll + np.pi/4) / (np.pi/2), 0.0, 1.0)
+        gripper = np.clip((roll + np.pi/4) / (np.pi/2), 0.0, 0.0)
         
         return gripper
     

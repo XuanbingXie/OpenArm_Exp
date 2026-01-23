@@ -14,19 +14,51 @@
 
 #pragma once
 
+#define LIMIT(x, min, max)                                                     \
+  if (x < min) {                                                               \
+    x = min;                                                                   \
+  } else if (x > max) {                                                        \
+    x = max;                                                                   \
+  }
+
 // #include <sensor_msgs/msg/joint_state.hpp>
 #include <controller/diff.hpp>
 #include <controller/dynamics.hpp>
 #include <deque>
 #include <fstream>
 #include <joint_state_converter.hpp>
+#include <string>
 #include <memory>
 #include <numeric>
+#include <vector>
 #include <openarm/can/socket/openarm.hpp>
 #include <openarm/damiao_motor/dm_motor_constants.hpp>
 #include <openarm_constants.hpp>
 #include <robot_state.hpp>
 #include <utility>
+
+class PID {
+public:
+  PID(double min, double max);
+
+  double update(double cur_error);
+
+  double limit(double value) {
+    LIMIT(value, min_, max_);
+    return value;
+  }
+  
+private:
+  double out_{0};
+  double error_{0};
+  double last_error_{0};
+  double error_sum_{0};
+  double proportion_{0.4};
+  double integral_{0.000000013};
+  double differential_{2.1};
+  double min_;
+  double max_;
+};
 
 class Control {
     openarm::can::socket::OpenArm *openarm_;
@@ -58,6 +90,9 @@ class Control {
     static constexpr double VIB_THRESHOLD = 0.7;  // [rad/s]
     std::deque<double> velocity_buffer_[NJOINTS];
 
+    // Joint angle writer
+    std::ofstream joint_writer_;
+
 public:
     Control(openarm::can::socket::OpenArm *arm, Dynamics *dynamics_l, Dynamics *dynamics_f,
             std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
@@ -71,6 +106,8 @@ public:
     std::shared_ptr<RobotSystemState> reference_;
 
     std::vector<double> Dn_, Kp_, Kd_, Fc_, k_, Fv_, Fo_;
+
+    std::vector<std::unique_ptr<PID>> joint_angle_pids_;
 
     // bool Setup(void);
     void Setstate(int state);
@@ -98,4 +135,10 @@ public:
     void ComputeFriction(const double *velocity, double *friction, size_t index);
     void ComputeGravity(const double *position, double *gravity);
     bool DetectVibration(const double *velocity, bool *what_axis);
+
+    // For debug
+    // Write joint angles to file
+    bool debug_{true};
+    void write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
+                                     const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current);
 };

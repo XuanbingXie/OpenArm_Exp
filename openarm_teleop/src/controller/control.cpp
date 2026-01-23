@@ -19,8 +19,35 @@
 #include <cmath>
 #include <controller/control.hpp>
 #include <controller/dynamics.hpp>
+#include <fstream>
 #include <iomanip>
 #include <thread>
+
+PID::PID(double min, double max) {
+  out_ = 0;
+  error_ = 0;
+  last_error_ = 0;
+  error_sum_ = 0;
+  proportion_ = 0.4;
+  integral_ = 0.000000013;
+  differential_ = 2.1;
+  min_ = min;
+  max_ = max;
+}
+
+double PID::update(double cur_error) {
+  last_error_ = error_;
+  error_ = cur_error;
+  error_sum_ += cur_error;
+
+  LIMIT(error_sum_, -50, 50);
+
+  out_ = proportion_ * error_ + differential_ * (error_ - last_error_) +
+         error_sum_ * integral_;
+  LIMIT(out_, min_, max_);
+  return out_;
+}
+
 
 Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynamics* dynamics_f,
                  std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
@@ -36,6 +63,17 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
     differentiator_ = new Differentiator(Ts);
     openarmjointconverter_ = new OpenArmJointConverter(arm_motor_num_);
     openarmgripperjointconverter_ = new OpenArmJGripperJointConverter(hand_motor_num_);
+
+    // Initialize joint angle PIDs
+    joint_angle_pids_.resize(arm_motor_num_);
+    for (size_t i = 0; i < arm_motor_num_; ++i) {
+        joint_angle_pids_[i] = std::make_unique<PID>(position_limit_min_L[i], position_limit_max_L[i]);
+    }
+
+    // Open joint writer file
+    if (debug_){
+        joint_writer_.open("joint_angles.txt", std::ios::out);
+    }
 }
 
 Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynamics* dynamics_f,
@@ -54,10 +92,27 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
     openarmgripperjointconverter_ = new OpenArmJGripperJointConverter(hand_motor_num_);
 
     arm_type_ = arm_type;
+
+    // Initialize joint angle PIDs
+    joint_angle_pids_.resize(arm_motor_num_);
+    for (size_t i = 0; i < arm_motor_num_; ++i) {
+        joint_angle_pids_[i] = std::make_unique<PID>(position_limit_min_L[i], position_limit_max_L[i]);
+    }
+
+    // Open joint writer file
+    joint_writer_.open("joint_angles.txt", std::ios::out);
+    if (joint_writer_.is_open()) {
+        joint_writer_ << "timestamp,arm_ref_0,arm_ref_1,arm_ref_2,arm_ref_3,arm_ref_4,arm_ref_5,arm_ref_6,"
+                      << "arm_cur_0,arm_cur_1,arm_cur_2,arm_cur_3,arm_cur_4,arm_cur_5,arm_cur_6,"
+                      << "hand_ref_0,hand_cur_0" << std::endl;
+    }
 }
 
 Control::~Control() {
     std::cout << "Control destructed " << std::endl;
+    if (joint_writer_.is_open()) {
+        joint_writer_.close();
+    }
     delete openarmjointconverter_;
     delete differentiator_;
 }
@@ -323,6 +378,11 @@ bool Control::unilateral_step() {
         std::vector<JointState> joint_hand_states_ref =
             robot_state_->hand_state().get_all_references();
 
+        // Write joint angles to file
+        if (debug_) {
+            write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
+        }
+
         // Joint → Motor
         std::vector<MotorState> arm_motor_refs =
             openarmjointconverter_->joint_to_motor(joint_arm_states_ref);
@@ -330,10 +390,16 @@ bool Control::unilateral_step() {
             openarmgripperjointconverter_->joint_to_motor(joint_hand_states_ref);
 
         std::vector<openarm::damiao_motor::MITParam> arm_cmds;
-        arm_cmds.reserve(arm_motor_refs.size());
         for (size_t i = 0; i < arm_motor_refs.size(); ++i) {
-            arm_cmds.emplace_back(openarm::damiao_motor::MITParam{
-                Kp_[i], Kd_[i], arm_motor_refs[i].position, arm_motor_refs[i].velocity, 0.0});
+            // double position_error = joint_arm_states_ref[i].position - joint_arm_states[i].position;
+            // // double pid_effort = joint_angle_pids_[i]->update(position_error);
+            // arm_cmds.emplace_back(openarm::damiao_motor::MITParam{
+            //     Kp_[i], Kd_[i], joint_arm_states_ref[i].position+pid_effort, arm_motor_refs[i].velocity, 0.0});
+
+            arm_cmds.emplace_back(openarm::damiao_motor::MITParam{Kp_[i], Kd_[i],
+                                                                   arm_motor_refs[i].position,
+                                                                   arm_motor_refs[i].velocity,
+                                                                   0.0});
         }
 
         std::vector<openarm::damiao_motor::MITParam> hand_cmds;
@@ -344,6 +410,20 @@ bool Control::unilateral_step() {
                 hand_motor_refs[i].velocity, 0.0});
         }
 
+        static int count = 0;
+        ++count;
+        if (count == 500) {
+            count = 0;
+            std::cout << "[Follower] Joint Pos Ref: ";
+            for (const auto& joint : joint_arm_states_ref) {
+                std::cout << std::fixed << std::setprecision(2) << joint.position << " ";
+            }
+            std::cout << std::endl;
+            std::cout << "[Follower] Motor Pos Now: ";
+            for (const auto& motor : arm_motor_states) {
+                std::cout << std::fixed << std::setprecision(2) << motor.position << " ";
+            }
+        }
         openarm_->get_arm().mit_control_all(arm_cmds);
         openarm_->get_gripper().mit_control_all(hand_cmds);
 
@@ -507,4 +587,39 @@ bool Control::DetectVibration(const double* velocity, bool* what_axis) {
     }
 
     return vibration_detected;
+}
+
+void Control::write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
+                                         const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current) {
+    if (!joint_writer_.is_open()) return;
+
+    static long long timestamp = 0;
+    timestamp++;
+
+    joint_writer_ << timestamp;
+
+    // Write arm reference positions
+    for (const auto& joint : arm_ref) {
+        joint_writer_ << "," << std::fixed << std::setprecision(6) << joint.position;
+    }
+
+    // Write arm current positions
+    for (const auto& joint : arm_current) {    
+        joint_writer_ << "," << std::fixed << std::setprecision(6) << joint.position;
+    }
+
+    // // Write hand reference and current positions
+    // if (!hand_ref.empty()) {
+    //     joint_writer_ << "," << std::fixed << std::setprecision(6) << hand_ref[0].position;
+    // } else {
+    //     joint_writer_ << ",0.0";
+    // }
+
+    // if (!hand_current.empty()) {
+    //     joint_writer_ << "," << std::fixed << std::setprecision(6) << hand_current[0].position;
+    // } else {
+    //     joint_writer_ << ",0.0";
+    // }
+
+    joint_writer_ << std::endl;
 }

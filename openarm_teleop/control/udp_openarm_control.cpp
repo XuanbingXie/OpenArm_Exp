@@ -86,7 +86,13 @@ protected:
                           << " | Gripper: " << gripper_pos << std::endl;
             }
         }
-        // If no new data, the previous reference values will be used (smooth continuation)
+
+        // For debug
+        // static std::vector<JointState> debug_joint_angles{
+        //     {0.59, 0.0, 0.0}, {-0.39, 0.0, 0.0}, {0.40, 0.0, 0.0},
+        //     {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
+        //     {0.0, 0.0, 0.0}};
+        // robot_state_->arm_state().set_all_references(debug_joint_angles);
     }
 
 private:

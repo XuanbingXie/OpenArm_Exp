@@ -105,10 +105,10 @@ cmake ..
 make -j4
 ```
 
-直接在 build 文件夹下使用以下命令
+在 openarm_teleop 文件夹下使用以下命令
 
 ```shell
-./robocap_control <urdf_path> <arm_side> <can_interface> <udp_port>
+./build/robocap_control <urdf_path> <arm_side> <can_interface> <udp_port>
 ```
 urdf_path 为必选参数, 其他为可选, urdf 文件在该仓库下的 openarm_description/urdf/openarm.urdf 路径下, 传入参数时请使用绝对路径
 

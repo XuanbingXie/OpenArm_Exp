@@ -373,14 +373,32 @@ bool Control::unilateral_step() {
     }
 
     else if (role_ == ROLE_FOLLOWER) {
+        // calc dynamics for gravity and friction compensation
+        dynamics_f_->GetGravity(joint_arm_positions.data(), gravity.data());
+        dynamics_f_->GetCoriolis(joint_arm_positions.data(), joint_arm_velocities.data(), coriolis.data());
+
+        // Friction (compute joint friction)
+        for (size_t i = 0; i < joint_arm_velocities.size(); ++i)
+            ComputeFriction(joint_arm_velocities.data(), friction.data(), i);
+
         std::vector<JointState> joint_arm_states_ref =
             robot_state_->arm_state().get_all_references();
         std::vector<JointState> joint_hand_states_ref =
             robot_state_->hand_state().get_all_references();
 
+        // set gravity and friction comp joint torque value
+        for (size_t i = 0; i < arm_dof; i++) {
+            joint_arm_states_ref[i].effort = gravity[i] + friction[i];
+        }
+
         // Write joint angles to file
         if (debug_) {
-            write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
+            static int count = 0;
+            ++count;
+            if (count == 100) {
+                write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
+                count = 0;
+            }
         }
 
         // Joint → Motor
@@ -399,7 +417,7 @@ bool Control::unilateral_step() {
             arm_cmds.emplace_back(openarm::damiao_motor::MITParam{Kp_[i], Kd_[i],
                                                                    arm_motor_refs[i].position,
                                                                    arm_motor_refs[i].velocity,
-                                                                   0.0});
+                                                                   arm_motor_refs[i].effort});
         }
 
         std::vector<openarm::damiao_motor::MITParam> hand_cmds;
@@ -453,7 +471,7 @@ void Control::ComputeFriction(const double* velocity, double* friction, size_t i
 }
 
 bool Control::AdjustPosition(void) {
-    int nstep = 220;
+    int nstep = 400;
     double alpha;
 
     std::vector<MotorState> arm_motor_states;
@@ -485,7 +503,8 @@ bool Control::AdjustPosition(void) {
         joint_hand_goal[i].effort = 0.0;
     }
 
-    std::vector<double> kp_arm_temp = {50, 50.0, 50.0, 50.0, 10.0, 10.0, 10.0};
+    // std::vector<double> kp_arm_temp = {50, 50.0, 50.0, 50.0, 10.0, 10.0, 10.0};
+    std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 5.0, 5.0, 5.0, 3.0};
     std::vector<double> kd_arm_temp = {1.2, 1.2, 1.2, 1.2, 0.3, 0.2, 0.3};
 
     std::vector<double> kp_hand_temp = {10.0};
@@ -520,6 +539,9 @@ bool Control::AdjustPosition(void) {
                                                                   arm_motor_refs[i].position,
                                                                   arm_motor_refs[i].velocity, 0.0});
         }
+        
+        // Test 
+        arm_cmds[0].tau = 1.0;
 
         std::vector<openarm::damiao_motor::MITParam> hand_cmds;
         hand_cmds.reserve(hand_motor_refs.size());

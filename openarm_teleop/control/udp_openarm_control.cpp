@@ -28,6 +28,20 @@
 #include <thread>
 #include <yamlloader.hpp>
 
+// Low-pass filter class for smoothing joint angles
+class LowPassFilter {
+public:
+    LowPassFilter(double alpha) : alpha_(alpha), prev_output_(0.0) {}
+    double update(double input) {
+        double output = alpha_ * input + (1.0 - alpha_) * prev_output_;
+        prev_output_ = output;
+        return output;
+    }
+private:
+    double alpha_;
+    double prev_output_;
+};
+
 std::atomic<bool> keep_running(true);
 
 void signal_handler(int signal) {
@@ -37,13 +51,19 @@ void signal_handler(int signal) {
     }
 }
 
+
 // Thread to read joint data from UDP
 class UdpReceiverThread : public PeriodicTimerThread {
 public:
     UdpReceiverThread(std::shared_ptr<RobotSystemState> robot_state, UdpJointReceiver* receiver,
-                      double hz = 100.0)
-        : PeriodicTimerThread(hz), robot_state_(robot_state), receiver_(receiver), 
-          update_count_(0), hz_(hz) {}
+                      double hz = 100.0, std::vector<double> filter_alphas = std::vector<double>(7, 0.1))
+        : PeriodicTimerThread(hz), robot_state_(robot_state), receiver_(receiver),
+          update_count_(0), hz_(hz) {
+        // Initialize filters with individual alphas for each joint
+        for (size_t i = 0; i < filter_alphas.size(); ++i) {
+            filters_.push_back(LowPassFilter(filter_alphas[i]));
+        }
+    }
 
 protected:
     void before_start() override {
@@ -60,6 +80,11 @@ protected:
 
         // Try to get new joint angles from UDP
         if (receiver_->get_joint_angles(joint_angles)) {
+            // Apply low-pass filter to joint angles
+            for (size_t i = 0; i < joint_angles.size(); ++i) {
+                joint_angles[i] = filters_[i].update(joint_angles[i]);
+            }
+
             // New data available - convert to JointState and update robot state
             std::vector<JointState> joint_states(joint_angles.size());
             for (size_t i = 0; i < joint_angles.size(); ++i) {
@@ -89,7 +114,7 @@ protected:
 
         // For debug
         // static std::vector<JointState> debug_joint_angles{
-        //     {0.59, 0.0, 0.0}, {-0.39, 0.0, 0.0}, {0.40, 0.0, 0.0},
+        //     {-0.6, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
         //     {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
         //     {0.0, 0.0, 0.0}};
         // robot_state_->arm_state().set_all_references(debug_joint_angles);
@@ -100,6 +125,8 @@ private:
     UdpJointReceiver* receiver_;
     uint64_t update_count_;
     double hz_;
+    std::vector<LowPassFilter> filters_;
+
 };
 
 // Thread to control the follower arm
@@ -182,7 +209,10 @@ int main(int argc, char** argv) {
 
         std::cout << "[INFO] Initializing dynamics model..." << std::endl;
         Dynamics* arm_dynamics = new Dynamics(urdf_path, root_link, leaf_link);
-        arm_dynamics->Init();
+        if (!arm_dynamics->Init()) {
+            std::cerr << "[ERROR] Failed to initialize dynamics model" << std::endl;
+            return 1;
+        }
         std::cout << "[INFO] ✅ Dynamics model initialized" << std::endl;
 
         // Initialize UDP receiver
@@ -225,6 +255,10 @@ int main(int argc, char** argv) {
         control->SetParameter(kp, kd, Fc, k, Fv, Fo);
         std::cout << "[INFO] ✅ Control parameters loaded" << std::endl;
 
+        // Load UDP receiver filter parameters
+        std::vector<double> filter_alphas = loader.get_vector("UdpReceiverFilter", "FilterAlphas");
+        std::cout << "[INFO] ✅ UDP receiver filter parameters loaded" << std::endl;
+
         // Move to home position
         std::cout << "\n[INFO] Moving to home position..." << std::endl;
         control->AdjustPosition();
@@ -232,7 +266,7 @@ int main(int argc, char** argv) {
 
         // Create and start control threads
         std::cout << "\n[INFO] Starting control threads..." << std::endl;
-        UdpReceiverThread udp_thread(robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY);
+        UdpReceiverThread udp_thread(robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, filter_alphas);
         FollowerArmThread follower_thread(robot_state, control, FOLLOW_FREQUENCY);
 
         udp_thread.start_thread();

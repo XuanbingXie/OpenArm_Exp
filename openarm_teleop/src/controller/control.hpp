@@ -89,10 +89,7 @@ class Control {
     static constexpr int VEL_WINDOW_SIZE = 10;
     static constexpr double VIB_THRESHOLD = 0.7;  // [rad/s]
     std::deque<double> velocity_buffer_[NJOINTS];
-
-    // Joint angle writer
-    std::ofstream joint_writer_;
-
+    
 public:
     Control(openarm::can::socket::OpenArm *arm, Dynamics *dynamics_l, Dynamics *dynamics_f,
             std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
@@ -141,4 +138,8 @@ public:
     bool debug_{true};
     void write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
                                      const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current);
+
+    // Joint angle writer
+    std::ofstream joint_writer_;
+
 };

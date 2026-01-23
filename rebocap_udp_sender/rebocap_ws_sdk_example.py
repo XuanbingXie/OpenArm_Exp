@@ -1,5 +1,5 @@
 import time
-import socket
+
 import rebocap_ws_sdk
 
 counter = 0

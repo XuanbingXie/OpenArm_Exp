@@ -17,13 +17,6 @@ import math
 sys.path.insert(0, '.')
 import rebocap_ws_sdk
 
-
-def xyzw2wxyz(quat):
-    res = np.zeros_like(quat)
-    res[0] = quat[-1]
-    res[1:] = quat[:-1]
-    return res
-
 class RoboCapUdpSender:
     """Sends RoboCap joint angles via UDP"""
     
@@ -36,22 +29,12 @@ class RoboCapUdpSender:
         
         # Create UDP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        print(f"✅ UDP socket created, sending to {udp_host}:{udp_port}")
-        
-        # Initialize RoboCap SDK
-        print(f"[INFO] Connecting to RoboCap on port {rebocap_port}...")
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
         self.sdk = rebocap_ws_sdk.RebocapWsSdk(
-            coordinate_type=rebocap_ws_sdk.CoordinateType.UnityCoordinate,
-            use_global_rotation=True
+            coordinate_type=rebocap_ws_sdk.CoordinateType.BlenderCoordinate,
+            use_global_rotation=False
         )
-        self.sdk.set_pose_msg_callback(self.on_pose_data)
-        self.sdk.set_exception_close_callback(self.on_exception_close)
-        
-        ret = self.sdk.open(rebocap_port)
-        if ret != 0:
-            self.cleanup()
-            raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
-        
         ## Set min value and max value of joints (based on openarm_constants.hpp)
         PI = math.pi
         self.joints_min_value = [
@@ -72,30 +55,32 @@ class RoboCapUdpSender:
             PI / 2.0,           # joint 5
             PI / 2.0            # joint 6
         ]
-
-        print("✅ RoboCap connected successfully!")
-        print(f"📡 Sending joint angles via UDP to {udp_host}:{udp_port}...")
-        print("   Press Ctrl+C to stop\n")
+        self.sdk.set_pose_msg_callback(self.on_pose_data)
+        self.sdk.set_exception_close_callback(self.on_exception_close)
+        
+        ret = self.sdk.open(rebocap_port)
+        if ret != 0:
+            self.cleanup()
+            raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
+        
         
         # Setup signal handler
         signal.signal(signal.SIGINT, self.signal_handler)
     
     def signal_handler(self, sig, frame):
-        print("\n🛑 Received interrupt signal, shutting down...")
         self.running = False
     
     def on_exception_close(self):
-        print("⚠️  RoboCap connection closed unexpectedly")
         self.running = False
     
     def on_pose_data(self, sdk, tran, pose24, static_index, ts):
         """Callback when new pose data is received from RoboCap"""
         try:
             # Extract right arm joint quaternions (indices from SMPL skeleton)
-            r_shoulder = pose24[17]  # R_Shoulder [w, x, y, z]
-            r_elbow = pose24[19]     # R_Elbow
-            r_wrist = pose24[21]     # R_Wrist
-            r_hand = pose24[23]      # R_Hand
+            r_shoulder = pose24[-8]  # R_Shoulder [w, x, y, z]
+            r_elbow = pose24[-6]     # R_Elbow
+            r_wrist = pose24[-4]     # R_Wrist
+            r_hand = pose24[-2]      # R_Hand
             
             # Convert quaternions to OpenArm joint angles
             # ----------------Developing-----------------
@@ -196,7 +181,6 @@ class RoboCapUdpSender:
     def run(self):
         """Main loop"""
         try:
-            print("🚀 RoboCap UDP teleoperation active!")
             while self.running:
                 time.sleep(0.1)  # Data is updated in callback
         except KeyboardInterrupt:

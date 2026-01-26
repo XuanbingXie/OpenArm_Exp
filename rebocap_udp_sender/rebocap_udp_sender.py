@@ -3,6 +3,8 @@
 RoboCap UDP Sender
 Reads data from RoboCap SDK and sends joint angles via UDP
 """
+
+from pyexpat import model
 import time
 import numpy as np
 import socket
@@ -10,11 +12,8 @@ import json
 import sys
 import signal
 from scipy.spatial.transform import Rotation as R
-import math
-
-
-# Add rebocap SDK to path
-sys.path.insert(0, '.')
+from contants import JOINTS_MIN_VALUE, JOINTS_MAX_VALUE
+from shoulder_solver import IncrementalShoulderSolver
 import rebocap_ws_sdk
 
 class RoboCapUdpSender:
@@ -27,43 +26,26 @@ class RoboCapUdpSender:
         self.total_updates = 0
         self.running = True
         self.debug = True
-        self.debug_print_interval = 10
+        self.print_interval = 60
 
         # Create UDP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
+        # Initialize RoboCap SDK(Blender coordinate system, local rotation)
         self.sdk = rebocap_ws_sdk.RebocapWsSdk(
             coordinate_type=rebocap_ws_sdk.CoordinateType.BlenderCoordinate,
             use_global_rotation=False
         )
-        ## Set min value and max value of joints (based on openarm_constants.hpp)
-        PI = math.pi
-        self.joints_min_value = [
-            -3.491,  # joint 0 -200 degree
-            -1.396,          # joint 1 -190(3.31) degree (restrict to -80 degree)
-            -PI / 2.0,          # joint 2
-            0.0,                # joint 3 (ELBOWLIMIT)
-            -PI / 2.0,          # joint 4
-            -PI / 2.0,          # joint 5
-            -PI / 2.0           # joint 6
-        ]
-        self.joints_max_value = [
-            1.396,   # joint 0 80 degree
-            0,                 # joint 1
-            PI / 2.0,           # joint 2
-            2.443,                 # joint 3 140 degree
-            PI / 2.0,           # joint 4
-            PI / 2.0,           # joint 5
-            PI / 2.0            # joint 6
-        ]
         self.sdk.set_pose_msg_callback(self.on_pose_data)
         self.sdk.set_exception_close_callback(self.on_exception_close)
-        
         ret = self.sdk.open(rebocap_port)
         if ret != 0:
             self.cleanup()
             raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
+
+        # Solver for shoulder joints
+        self.shoulder_solver = IncrementalShoulderSolver()
 
         # Setup signal handler
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -77,7 +59,6 @@ class RoboCapUdpSender:
     def on_pose_data(self, sdk, tran, pose24, static_index, ts):
         """Callback when new pose data is received from RoboCap"""
         try:
-            # Extract right arm joint quaternions (indices from SMPL skeleton)
             r_shoulder = pose24[-8]  # R_Shoulder [x, y, z, w]
             r_elbow = pose24[-6]     # R_Elbow
             r_wrist = pose24[-4]     # R_Wrist
@@ -90,6 +71,7 @@ class RoboCapUdpSender:
             )
             
             # Estimate gripper position from hand orientation
+            # ----------------Developing-----------------
             gripper_pos = self.estimate_gripper_position(r_hand)
             
             # Send via UDP
@@ -98,9 +80,9 @@ class RoboCapUdpSender:
             self.total_updates += 1
             
             # Print status every 60 frames (~1 second at 60Hz)
-            # if self.debug and self.total_updates % self.debug_print_interval == 0:
-            #     print(f"Joints: {[f'{j:6.3f}' for j in joint_angles]} | "
-            #           f"Gripper: {gripper_pos:.3f}")
+            if self.debug and self.total_updates % self.print_interval == 0:
+                print(f"Joints: {[f'{j:6.3f}' for j in joint_angles]} | "
+                      f"Gripper: {gripper_pos:.3f}")
         
         except Exception as e:
             print(f"❌ Error in pose callback: {e}")
@@ -123,39 +105,44 @@ class RoboCapUdpSender:
         """
         Map RoboCap quaternions to OpenArm 7-DOF joint angles        
         """
-        # shoulder: [x, y, z, w]
+        if not self.shoulder_solver.init_flag:
+            ## Euler angle decomposition
+            r_shoulder = R.from_quat(shoulder, scalar_first=False)
+            j3, j2, j1 = r_shoulder.as_euler('xyx')
+            j2 -= np.pi / 2.0  # Adjust for OpenArm's zero position
 
-        ## Euler angle decomposition
-        r_shoulder = R.from_quat(shoulder, scalar_first=False)
-        j3, j2, j1 = r_shoulder.as_euler('xyx')
-        j2 -= np.pi / 2.0  # Adjust for OpenArm's zero position
+            # ## Twist Swing decomposition(Not good)     
+            # # Get twist quaternion with the X axis as the twist axis
+            # q_twist = np.array([shoulder[0], 0, 0, shoulder[3]])
+            
+            # # Normalize q_twist
+            # norm = np.linalg.norm(q_twist)
+            # if norm < 1e-6:
+            #     q_twist = np.array([0, 0, 0, 1.0])
+            # else:
+            #     q_twist /= norm
+            # # Get swing quaternion       
+            # r_total = R.from_quat(shoulder, scalar_first=False)
+            # r_twist = R.from_quat(q_twist)
+            # r_swing = r_total * r_twist.inv()
+            
+            # # Twist angle(j3)
+            # twist_angle = 2 * np.arctan2(q_twist[0], q_twist[3])
+            
+            # # Swing angle (j1, j2)        
+            # # Do not use euler angle
+            # v = r_swing.apply([1, 0, 0])  # [vx, vy, vz]
+            # r_frame_change = R.from_euler('x', 90, degrees=True)
+            # v = r_frame_change.apply(v)
+            # j1 = np.arctan2(v[2], v[1]) 
+            # j2 = -np.arctan2(v[0], np.sqrt(v[1]**2 + v[2]**2))
+            # j3 = twist_angle
+            
+            self.shoulder_solver.init_joints([j1, j2, j3])
+        else:
+            j1, j2, j3 = self.shoulder_solver.solve(shoulder)
 
-        # ## Twist Swing decomposition     
-        # # Get twist quaternion with the X axis as the twist axis
-        # q_twist = np.array([shoulder[0], 0, 0, shoulder[3]])
-        
-        # # Normalize q_twist
-        # norm = np.linalg.norm(q_twist)
-        # if norm < 1e-6:
-        #     q_twist = np.array([0, 0, 0, 1.0])
-        # else:
-        #     q_twist /= norm
-        # # Get swing quaternion       
-        # r_total = R.from_quat(shoulder, scalar_first=False)
-        # r_twist = R.from_quat(q_twist)
-        # r_swing = r_total * r_twist.inv()
-        
-        # # Twist angle(j3)
-        # twist_angle = 2 * np.arctan2(q_twist[0], q_twist[3])
-        
-        # # Swing angle (j1, j2)        
-        # # Do not use euler angle
-        # v = r_swing.apply([1, 0, 0]) 
-        # j1 = np.arctan2(v[1], -v[2]) 
-        # j2 = -np.arctan2(v[0], np.sqrt(v[1]**2 + v[2]**2))
-        # j3 = twist_angle
-
-        ## Get j4, j5, j6, j7, use euler angle
+        ## Just use Euler angles for elbow and wrist
         r_elbow = R.from_quat(elbow, scalar_first=False)
         z, _, x = r_elbow.as_euler('zyx')
         j4 = -z
@@ -165,25 +152,20 @@ class RoboCapUdpSender:
         j6 = z
         j7 = -y
 
-        ## Restrict to j1
-        if j1 > np.pi / 2:
-            j1 -= np.pi * 2
+        # ## Restrict j1(may not useful)
+        # if j1 > np.pi * 5.0 / 6.0 and j1 < np.pi:
+        #     j1 -= np.pi * 2 
 
         joints = [j1, j2, j3, j4, j5, j6, j7]
-        joints = np.clip(joints, self.joints_min_value, self.joints_max_value).tolist()
+        joints = np.clip(joints, JOINTS_MIN_VALUE, JOINTS_MAX_VALUE).tolist()
 
-        if self.debug and self.total_updates % self.debug_print_interval == 0:
+        if self.debug and self.total_updates % self.print_interval == 0:
             print(f"Debug Joints(Not clip): {j1:.3f}, {j2:.3f}, {j3:.3f}, {j4:.3f}, {j5:.3f}, {j6:.3f}, {j7:.3f}")
             print(f"Debug Joints: {joints[0]:.3f}, {joints[1]:.3f}, {joints[2]:.3f}, {joints[3]:.3f}, {joints[4]:.3f}, {joints[5]:.3f}, {joints[6]:.3f}")
-
 
         return joints
     
     def estimate_gripper_position(self, hand_quat):
-        """
-        Estimate gripper open/close from hand orientation
-        This is a simple heuristic - you may want to use a different method
-        """
         gripper = 0
 
         return gripper
@@ -197,21 +179,17 @@ class RoboCapUdpSender:
         finally:
             self.cleanup()
     def cleanup(self):
-        """Clean up resources"""
-        print("\n🧹 Cleaning up...")
         try:
             self.sdk.close()
-            print("✅ RoboCap SDK closed")
+            print("RoboCap SDK closed")
         except:
             pass
         
         try:
             self.sock.close()
-            print("✅ UDP socket closed")
+            print("UDP socket closed")
         except:
             pass
-        
-        print("👋 Goodbye!")
 
 
 def main():

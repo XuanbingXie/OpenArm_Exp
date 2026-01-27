@@ -218,7 +218,7 @@ int main(int argc, char** argv) {
         // Initialize UDP receiver
         std::cout << "\n[INFO] Starting UDP receiver on port " << udp_port << "..." << std::endl;
         std::cout << "[INFO] Make sure joint data sender is running!" << std::endl;
-        UdpJointReceiver udp_receiver(udp_port, 7);  // 7 joints for OpenArm
+        UdpJointReceiver udp_receiver(udp_port, arm_side, 7);  // 7 joints for OpenArm
 
         // Initialize OpenArm hardware
         std::cout << "\n[INFO] Initializing OpenArm hardware on " << can_interface << "..."

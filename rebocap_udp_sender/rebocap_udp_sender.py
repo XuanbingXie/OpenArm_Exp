@@ -82,7 +82,8 @@ class RoboCapUdpSender:
         """Send data via UDP as JSON"""
         data = {
             'timestamp': timestamp,
-            'joints': joint_angles,
+            'left_joints': joint_angles[:7],
+            'right_joints': joint_angles[7:],
         }
         
         # Convert to JSON and send
@@ -95,14 +96,21 @@ class RoboCapUdpSender:
         Map RoboCap quaternions to OpenArm 7-DOF joint angles        
         """
         ## left        
+        left_collar = pose24[-11]
         left_shoulder = pose24[-8]
         left_elbow = pose24[-6]
         left_wrist = pose24[-4]
 
         ## right
+        right_collar = pose24[-10]
         right_shoulder = pose24[-7]
         right_elbow = pose24[-5]
         right_wrist = pose24[-3]
+
+        ## Fuse collar rotation and shoulder rotation
+        left_shoulder = (R.from_quat(left_collar) * R.from_quat(left_shoulder)).as_quat()
+        right_shoulder = (R.from_quat(right_collar) * R.from_quat(right_shoulder)).as_quat()        
+
 
         ## ----------------For left arm--------------------
         if (not self.l_shoulder_initialized):

@@ -39,8 +39,9 @@ using json = nlohmann::json;
  */
 class UdpJointReceiver {
 public:
-    UdpJointReceiver(int port = 5678, size_t num_joints = 7)
+    UdpJointReceiver(int port = 5678, std::string arm_type = "left_arm", size_t num_joints = 7)
         : port_(port),
+          arm_type_(arm_type),
           num_joints_(num_joints),
           socket_fd_(-1),
           running_(false),
@@ -56,11 +57,13 @@ public:
         if (socket_fd_ < 0) {
             throw std::runtime_error("Failed to create UDP socket");
         }
-
         // Set socket to non-blocking mode
         int flags = fcntl(socket_fd_, F_GETFL, 0);
         fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK);
-
+        int optval = 1;
+        if (setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
+            throw std::runtime_error("Failed to set SO_REUSEPORT");
+        }
         // Bind to port
         struct sockaddr_in server_addr;
         std::memset(&server_addr, 0, sizeof(server_addr));
@@ -119,12 +122,6 @@ public:
     double get_timestamp() const {
         std::lock_guard<std::mutex> lock(data_mutex_);
         return timestamp_;
-    }
-
-    // Get pelvis position
-    void get_pelvis_position(std::vector<double>& pos) const {
-        std::lock_guard<std::mutex> lock(data_mutex_);
-        pos = pelvis_position_;
     }
 
     // Check if data is ready
@@ -207,8 +204,13 @@ private:
             std::lock_guard<std::mutex> lock(data_mutex_);
 
             // Extract joint angles
-            if (j.contains("joints") && j["joints"].is_array()) {
-                auto joints_array = j["joints"].get<std::vector<double>>();
+            if (j.contains("left_joints") || j.contains("right_joints")) {
+                std::vector<double> joints_array;
+                if (arm_type_ == "left_arm") {
+                    joints_array = j["left_joints"].get<std::vector<double>>();
+                } else {
+                    joints_array = j["right_joints"].get<std::vector<double>>();
+                }
                 if (joints_array.size() == num_joints_) {
                     joint_angles_ = joints_array;
                 } else {
@@ -219,19 +221,10 @@ private:
                 std::cerr << "[UdpJointReceiver] Warning: No 'joints' field in JSON" << std::endl;
             }
 
-            // Extract gripper position
-            if (j.contains("gripper")) {
-                gripper_position_ = j["gripper"].get<double>();
-            }
 
             // Extract timestamp
             if (j.contains("timestamp")) {
                 timestamp_ = j["timestamp"].get<double>();
-            }
-
-            // Extract pelvis position (optional)
-            if (j.contains("pelvis") && j["pelvis"].is_array()) {
-                pelvis_position_ = j["pelvis"].get<std::vector<double>>();
             }
 
             // Update sequence and mark data as ready
@@ -245,6 +238,7 @@ private:
     }
 
     int port_;
+    std::string arm_type_;
     size_t num_joints_;
     int socket_fd_;
     std::atomic<bool> running_;

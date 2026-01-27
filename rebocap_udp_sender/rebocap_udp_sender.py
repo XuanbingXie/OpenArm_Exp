@@ -32,6 +32,13 @@ class RoboCapUdpSender:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
+        # Solver for shoulder joints
+        # self.shoulder_solver = IncrementalShoulderSolver()
+        self.l_shoulder_initialized = False
+        self.l_shoulder_solver = IncrementalShoulderSolver('left', LEFT_JOINTS_MIN_VALUE[:3], LEFT_JOINTS_MAX_VALUE[:3])
+        self.r_shoulder_initialized = False
+        self.r_shoulder_solver = IncrementalShoulderSolver('right', RIGHT_JOINTS_MIN_VALUE[:3], RIGHT_JOINTS_MAX_VALUE[:3])
+
         # Initialize RoboCap SDK(Blender coordinate system, local rotation)
         self.sdk = rebocap_ws_sdk.RebocapWsSdk(
             coordinate_type=rebocap_ws_sdk.CoordinateType.BlenderCoordinate,
@@ -44,12 +51,6 @@ class RoboCapUdpSender:
             self.cleanup()
             raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
 
-        # Solver for shoulder joints
-        # self.shoulder_solver = IncrementalShoulderSolver()
-        self.l_shoulder_initialized = False
-        self.l_shoulder_solver = IncrementalShoulderSolver('left', LEFT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE)
-        self.r_shoulder_initialized = False
-        self.r_shoulder_solver = IncrementalShoulderSolver('right', RIGHT_JOINTS_MIN_VALUE, RIGHT_JOINTS_MAX_VALUE)
 
         # Setup signal handler
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -71,8 +72,8 @@ class RoboCapUdpSender:
                
             # Print status every 60 frames (~1 second at 60Hz)
             self.total_updates += 1
-            if self.debug and self.total_updates % self.print_interval == 0:
-                print(f"Joints: {[f'{j:6.3f}' for j in joint_angles]}")
+            # if self.debug and self.total_updates % self.print_interval == 0:
+            #     print(f"Joints: {[f'{j:6.3f}' for j in joint_angles]}")
         
         except Exception as e:
             print(f"❌ Error in pose callback: {e}")
@@ -104,13 +105,13 @@ class RoboCapUdpSender:
         right_wrist = pose24[-3]
 
         ## ----------------For left arm--------------------
-        if (not l_shoulder_initialized):
+        if (not self.l_shoulder_initialized):
             # Euer angle decomposition
             l_shoulder = R.from_quat(left_shoulder, scalar_first=False)
             l_j1, l_j2, l_j3 = l_shoulder.as_euler('XYX')
             l_j2 -= np.pi / 2.0  # Adjust for OpenArm's
             self.l_shoulder_solver.init_joints([l_j1, l_j2, l_j3])
-            l_shoulder_initialized = True
+            self.l_shoulder_initialized = True
         else:
             l_j1, l_j2, l_j3 = self.l_shoulder_solver.solve(left_shoulder)
         # Just use Euler angles for elbow and wrist
@@ -125,7 +126,7 @@ class RoboCapUdpSender:
 
 
         ## ----------------For right arm--------------------
-        if (not r_shoulder_initialized):
+        if (not self.r_shoulder_initialized):
             # Euler angle decomposition
             r_shoulder = R.from_quat(right_shoulder, scalar_first=False)
             r_j1, r_j2, r_j3 = r_shoulder.as_euler('XYX')
@@ -142,7 +143,7 @@ class RoboCapUdpSender:
                 r_j3 += np.pi
             r_j3 = -r_j3
             self.r_shoulder_solver.init_joints([r_j1, r_j2, r_j3])
-            r_shoulder_initialized = True
+            self.r_shoulder_initialized = True
         else:
             r_j1, r_j2, r_j3 = self.r_shoulder_solver.solve(right_shoulder)
                 

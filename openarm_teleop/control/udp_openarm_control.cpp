@@ -95,11 +95,11 @@ protected:
             robot_state_->arm_state().set_all_references(joint_states);
 
             // Update gripper
-            double gripper_pos = receiver_->get_gripper_position();
+            double gripper_tor = receiver_->get_gripper_torque();
             std::vector<JointState> gripper_states(1);
-            gripper_states[0].position = gripper_pos;
+            gripper_states[0].position = 0;
             gripper_states[0].velocity = 0.0;
-            gripper_states[0].effort = 0.0;
+            gripper_states[0].effort = gripper_tor;
             robot_state_->hand_state().set_all_references(gripper_states);
 
             update_count_++;
@@ -108,7 +108,7 @@ protected:
             if (update_count_ % 500 == 0) {
                 std::cout << "[UdpReceiverThread] Updates: " << update_count_
                           << " | Timestamp: " << receiver_->get_timestamp()
-                          << " | Gripper: " << gripper_pos << std::endl;
+                          << " | Gripper Torque: " << gripper_tor << std::endl;
             }
         }
 

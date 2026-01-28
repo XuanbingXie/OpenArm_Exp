@@ -14,6 +14,7 @@ import signal
 from scipy.spatial.transform import Rotation as R
 from contants import LEFT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE, RIGHT_JOINTS_MIN_VALUE, RIGHT_JOINTS_MAX_VALUE
 from shoulder_solver import IncrementalShoulderSolver
+from gripper_controller import GripperController
 import rebocap_ws_sdk
 
 class RoboCapUdpSender:
@@ -51,6 +52,9 @@ class RoboCapUdpSender:
             self.cleanup()
             raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
 
+        # Initialize gripper controller
+        self.gripper_controller = GripperController()
+        self.gripper_controller.start_gui()
 
         # Setup signal handler
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -80,12 +84,17 @@ class RoboCapUdpSender:
     
     def send_udp(self, timestamp, joint_angles):
         """Send data via UDP as JSON"""
+        # Sorry for this, not coincide with this funciton
+        left_torque, right_torque = self.gripper_controller.get_torques()
+
         data = {
             'timestamp': timestamp,
             'left_joints': joint_angles[:7],
             'right_joints': joint_angles[7:],
+            'left_gripper': left_torque,
+            'right_gripper': right_torque,
         }
-        
+
         # Convert to JSON and send
         json_data = json.dumps(data)
         self.sock.sendto(json_data.encode('utf-8'), (self.udp_host, self.udp_port))
@@ -188,11 +197,17 @@ class RoboCapUdpSender:
             self.cleanup()
     def cleanup(self):
         try:
+            self.gripper_controller.stop_gui()
+            print("Gripper controller GUI stopped")
+        except:
+            pass
+
+        try:
             self.sdk.close()
             print("RoboCap SDK closed")
         except:
             pass
-        
+
         try:
             self.sock.close()
             print("UDP socket closed")

@@ -48,7 +48,8 @@ public:
           data_ready_(false),
           sequence_number_(0),
           timestamp_(0.0),
-          gripper_position_(0.0) {
+          gripper_position_(0.0),
+          gripper_torque_(0.0) {
         joint_angles_.resize(num_joints_, 0.0);
         pelvis_position_.resize(3, 0.0);
 
@@ -116,6 +117,12 @@ public:
     double get_gripper_position() const {
         std::lock_guard<std::mutex> lock(data_mutex_);
         return gripper_position_;
+    }
+
+    // Get gripper torque
+    double get_gripper_torque() const {
+        std::lock_guard<std::mutex> lock(data_mutex_);
+        return gripper_torque_;
     }
 
     // Get timestamp
@@ -221,11 +228,20 @@ private:
                 std::cerr << "[UdpJointReceiver] Warning: No 'joints' field in JSON" << std::endl;
             }
 
+            // Extract gripper position
+            if (j.contains("left_gripper") || j.contains("right_gripper")) {
+                if (arm_type_ == "left_arm") {
+                    gripper_torque_ = j["left_gripper"].get<double>();
+                } else {
+                    gripper_torque_ = j["right_gripper"].get<double>();
+                }
+            }
 
             // Extract timestamp
             if (j.contains("timestamp")) {
                 timestamp_ = j["timestamp"].get<double>();
             }
+
 
             // Update sequence and mark data as ready
             sequence_number_++;
@@ -252,5 +268,6 @@ private:
     double timestamp_;
     std::vector<double> joint_angles_;
     double gripper_position_;
+    double gripper_torque_;
     std::vector<double> pelvis_position_;
 };

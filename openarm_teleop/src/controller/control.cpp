@@ -370,9 +370,7 @@ bool Control::unilateral_step() {
 
         return true;
 
-    }
-
-    else if (role_ == ROLE_FOLLOWER) {
+    } else if (role_ == ROLE_FOLLOWER) {
         // calc dynamics for gravity and friction compensation
         dynamics_f_->GetGravity(joint_arm_positions.data(), gravity.data());
         dynamics_f_->GetCoriolis(joint_arm_positions.data(), joint_arm_velocities.data(), coriolis.data());
@@ -409,11 +407,6 @@ bool Control::unilateral_step() {
 
         std::vector<openarm::damiao_motor::MITParam> arm_cmds;
         for (size_t i = 0; i < arm_motor_refs.size(); ++i) {
-            // double position_error = joint_arm_states_ref[i].position - joint_arm_states[i].position;
-            // // double pid_effort = joint_angle_pids_[i]->update(position_error);
-            // arm_cmds.emplace_back(openarm::damiao_motor::MITParam{
-            //     Kp_[i], Kd_[i], joint_arm_states_ref[i].position+pid_effort, arm_motor_refs[i].velocity, 0.0});
-
             arm_cmds.emplace_back(openarm::damiao_motor::MITParam{Kp_[i], Kd_[i],
                                                                    arm_motor_refs[i].position,
                                                                    arm_motor_refs[i].velocity,
@@ -424,8 +417,8 @@ bool Control::unilateral_step() {
         hand_cmds.reserve(hand_motor_refs.size());
         for (size_t i = 0; i < hand_motor_refs.size(); ++i) {
             hand_cmds.emplace_back(openarm::damiao_motor::MITParam{
-                Kp_[i + arm_dof], Kd_[i + arm_dof], hand_motor_refs[i].position,
-                hand_motor_refs[i].velocity, 0.0});
+                Kp_[i + arm_dof], Kd_[i + arm_dof], 0.0,
+                0.0, hand_motor_refs[i].effort});
         }
 
         static int count = 0;

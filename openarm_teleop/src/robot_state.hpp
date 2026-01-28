@@ -144,10 +144,6 @@ public:
         const size_t arm_size = arm_state_.get_size();
         const size_t hand_size = hand_state_.get_size();
 
-        std::cout << "arm_size : " << arm_size << std::endl;
-        std::cout << "hand_size : " << hand_size << std::endl;
-        std::cout << "all_responses.size() : " << all_responses.size() << std::endl;
-
         if (all_responses.size() != arm_size + hand_size) {
             throw std::runtime_error("set_all_responses: size mismatch.");
         }

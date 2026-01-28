@@ -10,7 +10,7 @@ import threading
 class GripperController:
     """Controller for gripper torque values with GUI interface"""
 
-    def __init__(self, left_torque=0.0, right_torque=0.0, min_torque=0.0, max_torque=10.0):
+    def __init__(self, left_torque=0.0, right_torque=0.0, min_torque=-0.5, max_torque=1.0):
         self.left_torque = left_torque
         self.right_torque = right_torque
         self.min_torque = min_torque
@@ -150,11 +150,11 @@ class GripperController:
         if self.root is not None and self.running:
             try:
                 # Update progress bars and labels (only show non-negative values)
-                left_display_value = max(0.0, self.left_torque)
+                left_display_value = max(self.min_torque, self.left_torque)
                 self.left_progress['value'] = left_display_value - self.min_torque
                 self.left_value_label.config(text=f"{left_display_value:.1f}")
 
-                right_display_value = max(0.0, self.right_torque)
+                right_display_value = max(self.min_torque, self.right_torque)
                 self.right_progress['value'] = right_display_value - self.min_torque
                 self.right_value_label.config(text=f"{right_display_value:.1f}")
 

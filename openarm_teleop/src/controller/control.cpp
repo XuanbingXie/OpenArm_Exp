@@ -484,7 +484,7 @@ bool Control::AdjustPosition(void) {
 
     std::vector<JointState> joint_arm_goal(NMOTORS - 1);
     for (size_t i = 0; i < NMOTORS - 1; ++i) {
-        joint_arm_goal[i].position = arm_type_ == "left" ? L_INITIAL_POSITION[i] : R_INITIAL_POSITION[i];
+        joint_arm_goal[i].position = arm_type_ == "left_arm" ? L_INITIAL_POSITION[i] : R_INITIAL_POSITION[i];
         joint_arm_goal[i].velocity = 0.0;
         joint_arm_goal[i].effort = 0.0;
     }

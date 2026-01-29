@@ -21,7 +21,10 @@ extern "C" {
 
 std::atomic<bool> keep_manus_running(true);
 
-float shared_thumb_index_distance = -1.0f;
+std::atomic<uint32_t> left_glove_id = 0;
+std::atomic<uint32_t> right_glove_id = 0;
+std::atomic<float> shared_thumb_index_distance_left = -1.0f;
+std::atomic<float> shared_thumb_index_distance_right = -1.0f;
 
 float thumb_dist_to_gripper_joint_pos(float dist) {
     constexpr float offset = 3.651 / 100.0; // 3.651cm 
@@ -42,6 +45,7 @@ void raw_device_data_callback(const RawDeviceDataInfo* const p_RawDeviceDataInfo
         if (data.sensorCount < 2) {
             continue; // Not enough sensor data
         }
+
         ManusVec3 thumb_position = data.sensorData[0].position;
         ManusVec3 index_position = data.sensorData[1].position;
 
@@ -51,7 +55,31 @@ void raw_device_data_callback(const RawDeviceDataInfo* const p_RawDeviceDataInfo
             powf(thumb_position.z - index_position.z, 2)
         );
 
-        shared_thumb_index_distance = thumb_index_distance;
+        if (data.id == left_glove_id) {
+            shared_thumb_index_distance_left = thumb_index_distance;
+        } else if (data.id == right_glove_id) {
+            shared_thumb_index_distance_right = thumb_index_distance;
+        }
+    }
+}
+
+void landscape_stream_callback(const Landscape* const p_Landscape) {
+    if (!keep_manus_running) return;
+
+    // Store the first left/right glove ID
+    bool left_found = false;
+    bool right_found = false;
+    for (uint32_t i = 0; i < p_Landscape->gloveDevices.gloveCount; ++i) {
+        const GloveLandscapeData& glove = p_Landscape->gloveDevices.gloves[i];
+        if (glove.side == Side_Left && !left_found) {
+            left_glove_id = glove.id;
+            left_found = true;
+            fprintf(stderr, "Left glove ID: %u\n", left_glove_id.load());
+        } else if (glove.side == Side_Right && !right_found) {
+            right_glove_id = glove.id;
+            right_found = true;
+            fprintf(stderr, "Right glove ID: %u\n", right_glove_id.load());
+        }
     }
 }
 
@@ -68,10 +96,11 @@ void initialize_manus_sdk() {
     CHECK_SDK_CALL(CoreSdk_InitializeCoordinateSystemWithVUH(vuh, 1));
 
     CoreSdk_RegisterCallbackForRawDeviceDataStream(raw_device_data_callback);
+    CoreSdk_RegisterCallbackForLandscapeStream(landscape_stream_callback);
 
     ManusHost manus_host;
     CHECK_SDK_CALL(CoreSdk_GetAvailableHostsFound(&manus_host, 1));
-    printf("Connecting to Manus Host: %s; IP Address: %s; Version: %d.%d.%d\n",
+    fprintf(stderr, "Connecting to Manus Host: %s; IP Address: %s; Version: %d.%d.%d\n",
            manus_host.hostName,
            manus_host.ipAddress,
            manus_host.manusCoreVersion.major,

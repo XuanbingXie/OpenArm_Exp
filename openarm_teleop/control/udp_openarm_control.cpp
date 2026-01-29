@@ -104,21 +104,20 @@ protected:
             gripper_states[0].effort = gripper_tor;
             robot_state_->hand_state().set_all_references(gripper_states);
 
-            update_count_++;
             // Print status every 500 updates (~1 second at 500Hz)
-            if (update_count_ % 500 == 0) {
+            if (++update_count_ % 500 == 0) {
                 std::cout << "[UdpReceiverThread] Updates: " << update_count_
                           << " | Timestamp: " << receiver_->get_timestamp()
                           << " | Gripper Torque: " << gripper_tor << std::endl;
             }
         }
 
-        // // Set gripper state(for manus, position control) 
-        // std::vector<JointState> gripper_states(1);
-        // gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance);
-        // gripper_states[0].velocity = 0.0;
-        // gripper_states[0].effort = 0.0;
-        // robot_state_->hand_state().set_all_references(gripper_states);
+        // Set gripper state(for manus, position control) 
+        std::vector<JointState> gripper_states(1);
+        gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_left);
+        gripper_states[0].velocity = 0.0;
+        gripper_states[0].effort = 0.0;
+        robot_state_->hand_state().set_all_references(gripper_states);
 
         // For debug
         // static std::vector<JointState> debug_joint_angles{
@@ -212,7 +211,7 @@ int main(int argc, char** argv) {
         }
 
         // Set up manus
-        // initialize_manus_sdk(); 
+        initialize_manus_sdk(); 
 
         // Setup dynamics
         std::string root_link = "openarm_body_link0";
@@ -299,7 +298,7 @@ int main(int argc, char** argv) {
         std::cout << "[INFO] Shutdown complete" << std::endl;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        // shutdown_manus_sdk();
+        shutdown_manus_sdk();
 
         // Cleanup
         delete control;

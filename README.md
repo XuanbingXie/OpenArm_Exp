@@ -52,6 +52,12 @@
       libyaml-cpp-dev \
     ```
 
+4. Other Dependencies
+
+    ```
+    sudo apt install nlohmann-json3-dev
+    ```
+    
 ## Usage
 
 ### 0. 通讯配置

@@ -54,7 +54,7 @@ class RoboCapUdpSender:
 
         # Initialize gripper controller
         self.gripper_controller = GripperController()
-        self.gripper_controller.start_gui()
+        # self.gripper_controller.start_gui()
 
         # Setup signal handler
         signal.signal(signal.SIGINT, self.signal_handler)

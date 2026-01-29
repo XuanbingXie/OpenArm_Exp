@@ -393,7 +393,7 @@ bool Control::unilateral_step() {
         if (debug_) {
             static int count = 0;
             ++count;
-            if (count == 100) {
+            if (count == 10) {
                 write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
                 count = 0;
             }

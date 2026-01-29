@@ -1,7 +1,7 @@
-install/
+install
 build 
 log  
 .cache
-./openarm_teleop/build
-./openarm_teleop/.cache
-./openarm_teleop/joint_angles.txt
+openarm_teleop/build
+openarm_teleop/.cache
+openarm_teleop/joint_angles.txt

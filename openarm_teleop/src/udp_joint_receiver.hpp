@@ -39,18 +39,18 @@ using json = nlohmann::json;
  */
 class UdpJointReceiver {
 public:
-    UdpJointReceiver(int port = 5678, std::string arm_type = "left_arm", size_t num_joints = 7)
+    UdpJointReceiver(int port = 5678, size_t num_joints = 7)
         : port_(port),
-          arm_type_(arm_type),
           num_joints_(num_joints),
           socket_fd_(-1),
           running_(false),
           data_ready_(false),
           sequence_number_(0),
           timestamp_(0.0),
-          gripper_position_(0.0),
-          gripper_torque_(0.0) {
-        joint_angles_.resize(num_joints_, 0.0);
+          left_gripper_torque_(0.0),
+          right_gripper_torque_(0.0) {
+        left_joint_angles_.resize(num_joints_, 0.0);
+        right_joint_angles_.resize(num_joints_, 0.0);
         pelvis_position_.resize(3, 0.0);
 
         // Create UDP socket
@@ -58,13 +58,15 @@ public:
         if (socket_fd_ < 0) {
             throw std::runtime_error("Failed to create UDP socket");
         }
+
         // Set socket to non-blocking mode
         int flags = fcntl(socket_fd_, F_GETFL, 0);
         fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK);
-        int optval = 1;
-        if (setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
-            throw std::runtime_error("Failed to set SO_REUSEPORT");
-        }
+        // Set this can make socket monitored by multiple processes
+        // int optval = 1;
+        // if (setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
+        //     throw std::runtime_error("Failed to set SO_REUSEPORT");
+        // }
         // Bind to port
         struct sockaddr_in server_addr;
         std::memset(&server_addr, 0, sizeof(server_addr));
@@ -95,34 +97,31 @@ public:
         }
     }
 
-    // Get joint angles (returns true if new data is available)
-    bool get_joint_angles(std::vector<double>& joints) {
+    bool get_joints_angles(std::vector<double>& l_joints, std::vector<double>& r_joints) {
         std::lock_guard<std::mutex> lock(data_mutex_);
-
-        if (!data_ready_) {
-            return false;
-        }
+        if (!data_ready_) return false;
 
         uint64_t current_seq = sequence_number_;
         if (current_seq == last_read_sequence_) {
             return false;  // No new data since last read
         }
 
-        joints = joint_angles_;
+        l_joints = left_joint_angles_;
+        r_joints = right_joint_angles_;
         last_read_sequence_ = current_seq;
         return true;
     }
 
-    // Get gripper position
-    double get_gripper_position() const {
+    // Get left gripper torque
+    double get_left_gripper_torque() const {
         std::lock_guard<std::mutex> lock(data_mutex_);
-        return gripper_position_;
+        return left_gripper_torque_;
     }
 
-    // Get gripper torque
-    double get_gripper_torque() const {
+    // Get right gripper torque
+    double get_right_gripper_torque() const {
         std::lock_guard<std::mutex> lock(data_mutex_);
-        return gripper_torque_;
+        return right_gripper_torque_;
     }
 
     // Get timestamp
@@ -201,47 +200,51 @@ private:
         try {
             // Debug: print raw data
             if (sequence_number_ < 3) {
-                std::cout << "[UdpJointReceiver] Raw data (" << length << " bytes): " 
+                std::cout << "[UdpJointReceiver] Raw data (" << length << " bytes): "
                           << std::string(data, std::min(length, size_t(100))) << "..." << std::endl;
             }
-            
+
             // Parse JSON
             json j = json::parse(std::string(data, length));
 
             std::lock_guard<std::mutex> lock(data_mutex_);
 
-            // Extract joint angles
-            if (j.contains("left_joints") || j.contains("right_joints")) {
-                std::vector<double> joints_array;
-                if (arm_type_ == "left_arm") {
-                    joints_array = j["left_joints"].get<std::vector<double>>();
+            // Extract left joint angles
+            if (j.contains("left_joints")) {
+                std::vector<double> left_joints_array = j["left_joints"].get<std::vector<double>>();
+                if (left_joints_array.size() == num_joints_) {
+                    left_joint_angles_ = left_joints_array;
                 } else {
-                    joints_array = j["right_joints"].get<std::vector<double>>();
+                    std::cerr << "[UdpJointReceiver] Warning: Expected " << num_joints_
+                              << " left joints, got " << left_joints_array.size() << std::endl;
                 }
-                if (joints_array.size() == num_joints_) {
-                    joint_angles_ = joints_array;
-                } else {
-                    std::cerr << "[UdpJointReceiver] Warning: Expected " << num_joints_ 
-                              << " joints, got " << joints_array.size() << std::endl;
-                }
-            } else {
-                std::cerr << "[UdpJointReceiver] Warning: No 'joints' field in JSON" << std::endl;
             }
 
-            // Extract gripper position
-            if (j.contains("left_gripper") || j.contains("right_gripper")) {
-                if (arm_type_ == "left_arm") {
-                    gripper_torque_ = j["left_gripper"].get<double>();
+            // Extract right joint angles
+            if (j.contains("right_joints")) {
+                std::vector<double> right_joints_array = j["right_joints"].get<std::vector<double>>();
+                if (right_joints_array.size() == num_joints_) {
+                    right_joint_angles_ = right_joints_array;
                 } else {
-                    gripper_torque_ = j["right_gripper"].get<double>();
+                    std::cerr << "[UdpJointReceiver] Warning: Expected " << num_joints_
+                              << " right joints, got " << right_joints_array.size() << std::endl;
                 }
+            }
+
+            // Extract left gripper torque
+            if (j.contains("left_gripper")) {
+                left_gripper_torque_ = j["left_gripper"].get<double>();
+            }
+
+            // Extract right gripper torque
+            if (j.contains("right_gripper")) {
+                right_gripper_torque_ = j["right_gripper"].get<double>();
             }
 
             // Extract timestamp
             if (j.contains("timestamp")) {
                 timestamp_ = j["timestamp"].get<double>();
             }
-
 
             // Update sequence and mark data as ready
             sequence_number_++;
@@ -254,7 +257,6 @@ private:
     }
 
     int port_;
-    std::string arm_type_;
     size_t num_joints_;
     int socket_fd_;
     std::atomic<bool> running_;
@@ -266,8 +268,9 @@ private:
     uint64_t sequence_number_;
     uint64_t last_read_sequence_ = 0;
     double timestamp_;
-    std::vector<double> joint_angles_;
-    double gripper_position_;
-    double gripper_torque_;
+    std::vector<double> left_joint_angles_;
+    std::vector<double> right_joint_angles_;
+    double left_gripper_torque_;
+    double right_gripper_torque_;
     std::vector<double> pelvis_position_;
 };

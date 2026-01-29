@@ -50,9 +50,7 @@ public:
 // assume motor num equals to joint num
 class OpenArmJointConverter : public MotorJointConverter {
 public:
-    explicit OpenArmJointConverter(size_t joint_count) : joint_count_(joint_count) {
-        std::cout << "OpenArm joint converter joinit_count is : " << joint_count << std::endl;
-    }
+    explicit OpenArmJointConverter(size_t joint_count) : joint_count_(joint_count) {}
 
     std::vector<JointState> motor_to_joint(const std::vector<MotorState>& m) const override {
         // std::cout << "joint num conv : " << m.size() << std::endl;
@@ -80,9 +78,7 @@ private:
 // assume motor num equals to joint num
 class OpenArmJGripperJointConverter : public MotorJointConverter {
 public:
-    explicit OpenArmJGripperJointConverter(size_t joint_count) : joint_count_(joint_count) {
-        std::cout << "Gripper joint converter joint_count is : " << joint_count << std::endl;
-    }
+    explicit OpenArmJGripperJointConverter(size_t joint_count) : joint_count_(joint_count) {}
 
     std::vector<JointState> motor_to_joint(const std::vector<MotorState>& m) const override {
         std::vector<JointState> j(m.size());

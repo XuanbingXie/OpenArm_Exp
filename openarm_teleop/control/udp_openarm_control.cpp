@@ -49,6 +49,7 @@ void signal_handler(int signal) {
     if (signal == SIGINT) {
         std::cout << "\nCtrl+C detected. Exiting loop..." << std::endl;
         keep_running = false;
+        keep_manus_running = false;
     }
 }
 
@@ -95,7 +96,7 @@ protected:
             }
             robot_state_->arm_state().set_all_references(joint_states);
 
-            // Update gripper
+            // Update gripper(for gui, torque control)
             double gripper_tor = receiver_->get_gripper_torque();
             std::vector<JointState> gripper_states(1);
             gripper_states[0].position = 0;
@@ -111,6 +112,13 @@ protected:
                           << " | Gripper Torque: " << gripper_tor << std::endl;
             }
         }
+
+        // // Set gripper state(for manus, position control) 
+        // std::vector<JointState> gripper_states(1);
+        // gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance);
+        // gripper_states[0].velocity = 0.0;
+        // gripper_states[0].effort = 0.0;
+        // robot_state_->hand_state().set_all_references(gripper_states);
 
         // For debug
         // static std::vector<JointState> debug_joint_angles{
@@ -204,7 +212,7 @@ int main(int argc, char** argv) {
         }
 
         // Set up manus
-        initialize_manus_sdk(); 
+        // initialize_manus_sdk(); 
 
         // Setup dynamics
         std::string root_link = "openarm_body_link0";
@@ -289,6 +297,9 @@ int main(int argc, char** argv) {
         openarm->disable_all();
 
         std::cout << "[INFO] Shutdown complete" << std::endl;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // shutdown_manus_sdk();
 
         // Cleanup
         delete control;

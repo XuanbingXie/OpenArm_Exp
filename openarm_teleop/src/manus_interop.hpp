@@ -19,10 +19,21 @@ extern "C" {
         }                                      \
     } while (0)
 
+std::atomic<bool> keep_manus_running(true);
 
 float shared_thumb_index_distance = -1.0f;
 
+float thumb_dist_to_gripper_joint_pos(float dist) {
+    constexpr float offset = 3.651 / 100.0; // 3.651cm 
+    constexpr float max_hand_dist = 11.873 / 100.0; // 11.873cm
+
+    dist = std::max(0.f, dist-offset);
+    return -std::min(1.f, dist/max_hand_dist);
+}
+
 void raw_device_data_callback(const RawDeviceDataInfo* const p_RawDeviceDataInfo) {
+    if (!keep_manus_running) return;
+
     // Handle raw device data here
     for (uint32_t i = 0; i < p_RawDeviceDataInfo->rawDeviceDataCount; ++i) {
         RawDeviceData data;
@@ -71,6 +82,10 @@ void initialize_manus_sdk() {
     CHECK_SDK_CALL(CoreSdk_SetRawSkeletonHandMotion(HandMotion_Auto));
 }
 
+void shutdown_manus_sdk() {
+    CoreSdk_Disconnect();
+    CoreSdk_ShutDown();
+}
 
 #ifdef __cplusplus
 }

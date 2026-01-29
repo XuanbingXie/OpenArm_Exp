@@ -417,8 +417,8 @@ bool Control::unilateral_step() {
         hand_cmds.reserve(hand_motor_refs.size());
         for (size_t i = 0; i < hand_motor_refs.size(); ++i) {
             hand_cmds.emplace_back(openarm::damiao_motor::MITParam{
-                0.0, 0.0, 0.0,
-                0.0, hand_motor_refs[i].effort});
+                Kp_[arm_dof+i], Kd_[arm_dof+i], hand_motor_refs[i].position,
+                hand_motor_refs[i].velocity, hand_motor_refs[i].effort});
         }
 
         static int count = 0;

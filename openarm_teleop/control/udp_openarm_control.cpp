@@ -27,6 +27,7 @@
 #include <udp_joint_receiver.hpp>
 #include <thread>
 #include <yamlloader.hpp>
+#include <manus_interop.hpp>
 
 // Low-pass filter class for smoothing joint angles
 class LowPassFilter {
@@ -103,7 +104,6 @@ protected:
             robot_state_->hand_state().set_all_references(gripper_states);
 
             update_count_++;
-
             // Print status every 500 updates (~1 second at 500Hz)
             if (update_count_ % 500 == 0) {
                 std::cout << "[UdpReceiverThread] Updates: " << update_count_
@@ -159,6 +159,7 @@ int main(int argc, char** argv) {
     try {
         std::signal(SIGINT, signal_handler);
 
+
         // Parse command line arguments
         std::string arm_side = "left_arm";
         std::string urdf_path;
@@ -201,6 +202,9 @@ int main(int argc, char** argv) {
             std::cerr << "[ERROR] URDF file not found: " << urdf_path << std::endl;
             return 1;
         }
+
+        // Set up manus
+        initialize_manus_sdk(); 
 
         // Setup dynamics
         std::string root_link = "openarm_body_link0";

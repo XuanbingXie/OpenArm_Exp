@@ -44,10 +44,12 @@ endif()
 add_library(
   openarm_teleop_lib STATIC
   src/controller/dynamics.cpp src/controller/control.cpp
-  src/openarm_port/openarm_init.cpp src/openarm_port/joint_mapper.cpp)
+  src/openarm_port/openarm_init.cpp src/openarm_port/joint_mapper.cpp
+  src/manus_interop.hpp)
 
 target_include_directories(openarm_teleop_lib
-                           PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+                           PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
+                           ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(NOT TARGET kdl_parser::kdl_parser)
   # For old kdl-parser such as libkdl-parser-dev 1.14.2 in Debian.
@@ -61,7 +63,8 @@ endif()
 target_link_libraries(
   openarm_teleop_lib
   PUBLIC OpenArmCAN::openarm_can Eigen3::Eigen ${orocos_kdl_LIBRARIES}
-  kdl_parser::kdl_parser urdfdom::urdfdom_model yaml-cpp::yaml-cpp)
+  kdl_parser::kdl_parser urdfdom::urdfdom_model yaml-cpp::yaml-cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/lib/libManusSDK_Integrated.so)
 
 
 # -----------------------------

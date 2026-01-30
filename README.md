@@ -88,39 +88,7 @@ sudo chmod +x build.sh
 source install/setup.bash
 ```
 
-### 2. 发送端设置(遥操)
-
-发送端是纯粹的 python 语法, 核心文件为 rebocap_udp_sender 下的 rebocap_udp_sender.py, 主要包括 ReboCap 数据接收功能以及关节映射功能(developing)
-
-在 Windows 系统上启动 ReboCap 并确定可接收到关节数据后, 使用以下命令启动发送端
-
-```shell
-python rebocap_udp_sender.py <udp_host> <udp_port> <rebocap_port>
-```
-
-三个参数均为可选参数, udp_host 默认为 255.255.255.255(广播地址), upd_port 默认为 5678, rebocap_port 默认为 7690
-
-### 3. 接受端设置(遥操)
-
-接受端是纯粹的 C++ 语法, 核心文件为 openarm_teleop/control 下的 udp_openarm_control.cpp, 使用以下命令完成对接收端代码的编译
-
-```shell
-cd openarm_teleop
-mkdir build && cd build
-cmake ..
-make -j4
-```
-
-在 openarm_teleop 文件夹下使用以下命令
-
-```shell
-./build/robocap_control <urdf_path> <arm_side> <can_interface> <udp_port>
-```
-urdf_path 为必选参数, 其他为可选, urdf 文件在该仓库下的 openarm_description/urdf/openarm.urdf 路径下, 传入参数时请使用绝对路径
-
-arm_side 默认为 left_arm, can_interface 默认为 can1， udp_port 默认为 5678
-
-### 4. 机械臂简单测试
+### 2. 机械臂简单测试
 
 openarm_ros2 仓库和 openarm_test 仓库用于机械臂测试, 目前可复现 npz 存储的关节轨迹(支持全关节或上臂三关节), 支持仿真复现和实机复现
 
@@ -141,3 +109,48 @@ ros2 launch openarm_bimanual_moveit_config demo.launch.py use_fake_hardware:=Tru
 ```shell
 ros2 launch openarm_test openarm_test.launch.py
 ```
+
+### 3. 发送端设置(遥操)
+
+发送端是纯粹的 python 语法, 核心文件为 rebocap_udp_sender 下的 rebocap_udp_sender.py, 主要包括 ReboCap 数据接收功能以及关节映射功能(developing)
+
+在 Windows 系统上启动 ReboCap 并确定可接收到关节数据后, 使用以下命令启动发送端
+
+```shell
+python rebocap_udp_sender.py <udp_host> <udp_port> <rebocap_port>
+```
+
+三个参数均为可选参数, udp_host 默认为 255.255.255.255(广播地址), upd_port 默认为 5678, rebocap_port 默认为 7690
+
+### 4. 接受端设置(遥操)
+
+接受端是纯粹的 C++ 语法, 核心文件为 openarm_teleop/control 下的 udp_openarm_control.cpp, 使用以下命令完成对接收端代码的编译
+
+```shell
+cd openarm_teleop
+mkdir build && cd build
+cmake ..
+make -j4
+```
+
+在 openarm_teleop 文件夹下使用以下命令可以分别控制单臂或直接控制双臂
+
+```shell
+## 单臂模式
+./build/rebocap_control <urdf_path> single_left <arm_side> <can_interface> <udp_port>
+```
+
+```shell
+## 双臂模式
+./build/rebocap_control <urdf_path> dual <left_can_interface> <right_can_interface> <udp_port>
+```
+
+urdf_path 为必选参数, 其他为可选, urdf 文件在该仓库下的 openarm_description/urdf/openarm.urdf 路径下, 传入参数时请使用绝对路径
+
+arm_size 可选 left_arm 或 right_arm
+
+can_interface 根据具体 can 口决定, 如 can0、can1
+
+udp_port 默认为 5678
+
+

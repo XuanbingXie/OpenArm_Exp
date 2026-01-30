@@ -377,22 +377,26 @@ int main(int argc, char** argv) {
                                         right_hand_motor_num);
         }
 
-        // Load control parameters from YAML
+        // Load control parameters from YAML and set to controllers
         std::cout << "\n[INFO] Loading control parameters..." << std::endl;
         YamlLoader loader("config/follower.yaml");
-
-        std::vector<double> kp = loader.get_vector("FollowerArmParam", "Kp");
-        std::vector<double> kd = loader.get_vector("FollowerArmParam", "Kd");
-        std::vector<double> Fc = loader.get_vector("FollowerArmParam", "Fc");
-        std::vector<double> k = loader.get_vector("FollowerArmParam", "k");
-        std::vector<double> Fv = loader.get_vector("FollowerArmParam", "Fv");
-        std::vector<double> Fo = loader.get_vector("FollowerArmParam", "Fo");
-
+        std::vector<double> l_kp = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Kp");
+        std::vector<double> l_kd = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Kd");
+        std::vector<double> l_Fc = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Fc");
+        std::vector<double> l_k = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "k");
+        std::vector<double> l_Fv = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Fv");
+        std::vector<double> l_Fo = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Fo");
+        std::vector<double> r_kp = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "Kp");
+        std::vector<double> r_kd = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "Kd");
+        std::vector<double> r_Fc = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "Fc");
+        std::vector<double> r_k = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "k");
+        std::vector<double> r_Fv = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "Fv");
+        std::vector<double> r_Fo = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "Fo");
         if (left_control) {
-            left_control->SetParameter(kp, kd, Fc, k, Fv, Fo);
+            left_control->SetParameter(l_kp, l_kd, l_Fc, l_k, l_Fv, l_Fo);
         }
         if (right_control) {
-            right_control->SetParameter(kp, kd, Fc, k, Fv, Fo);
+            right_control->SetParameter(r_kp, r_kd, r_Fc, r_k, r_Fv, r_Fo);
         }
         std::cout << "[INFO] Control parameters loaded" << std::endl;
 
@@ -402,7 +406,7 @@ int main(int argc, char** argv) {
         UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, filter_alphas);
         udp_thread.start_thread();
         std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;
-        
+
         // Insure initial position is received
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 

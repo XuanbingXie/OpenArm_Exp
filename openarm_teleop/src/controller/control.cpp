@@ -487,10 +487,6 @@ bool Control::AdjustPosition(void) {
         robot_state_->arm_state().get_all_references();
     std::vector<JointState> joint_hand_states_ref_init =
         robot_state_->hand_state().get_all_references();
-
-    // for (const auto& joint : joint_arm_states_ref_init) {
-    //     std::cout << "Target Joint Position: " << joint.position << std::endl;
-    // }
         
     std::vector<JointState> joint_arm_goal(NMOTORS - 1);
     for (size_t i = 0; i < NMOTORS - 1; ++i) {
@@ -507,7 +503,7 @@ bool Control::AdjustPosition(void) {
     }
 
     // std::vector<double> kp_arm_temp = {50, 50.0, 50.0, 50.0, 10.0, 10.0, 10.0};
-    std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 10.0, 5.0, 5.0, 3.0};
+    std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 5.0, 5.0, 5.0, 3.0};
     std::vector<double> kd_arm_temp = {1.2, 1.2, 1.2, 1.2, 0.3, 0.2, 0.3};
 
     std::vector<double> kp_hand_temp = {10.0};

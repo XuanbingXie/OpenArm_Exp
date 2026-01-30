@@ -46,6 +46,21 @@ public:
         return root_[node_name] && root_[node_name][key];
     }
 
+    std::vector<double> get_vector_by_two_levels(const std::string& node_name,
+                                               const std::string& key1,
+                                               const std::string& key2) const {
+        if (!root_[node_name]) {
+            throw std::runtime_error("Node '" + node_name + "' not found.");
+        }
+        if (!root_[node_name][key1]) {
+            throw std::runtime_error("Key '" + key1 + "' not found under node '" + node_name + "'.");
+        }
+        if (!root_[node_name][key1][key2]) {
+            throw std::runtime_error("Key '" + key2 + "' not found under node '" + node_name + "/" + key1 + "'.");
+        }
+        return root_[node_name][key1][key2].as<std::vector<double>>();
+    }
+    
 private:
     YAML::Node get_node(const std::string& node_name, const std::string& key) const {
         if (!root_[node_name]) {

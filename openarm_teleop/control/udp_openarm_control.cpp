@@ -29,19 +29,7 @@
 #include <yamlloader.hpp>
 #include <manus_interop.hpp>
 
-// Low-pass filter class for smoothing joint angles
-class LowPassFilter {
-public:
-    LowPassFilter(double alpha) : alpha_(alpha), prev_output_(0.0) {}
-    double update(double input) {
-        double output = alpha_ * input + (1.0 - alpha_) * prev_output_;
-        prev_output_ = output;
-        return output;
-    }
-private:
-    double alpha_;
-    double prev_output_;
-};
+
 
 std::atomic<bool> keep_running(true);
 
@@ -60,15 +48,9 @@ public:
     UdpReceiverThread(std::shared_ptr<RobotSystemState> left_robot_state,
                       std::shared_ptr<RobotSystemState> right_robot_state,
                       UdpJointReceiver* receiver,
-                      double hz = 100.0, std::vector<double> filter_alphas = std::vector<double>(7, 0.1))
+                      double hz = 100.0)
         : PeriodicTimerThread(hz), left_robot_state_(left_robot_state), right_robot_state_(right_robot_state),
-          receiver_(receiver), update_count_(0), hz_(hz) {
-        // Initialize filters with individual alphas for each joint
-        for (size_t i = 0; i < filter_alphas.size(); ++i) {
-            left_filters_.push_back(LowPassFilter(filter_alphas[i]));
-            right_filters_.push_back(LowPassFilter(filter_alphas[i]));
-        }
-    }
+          receiver_(receiver), update_count_(0), hz_(hz) {}
 
 protected:
     void before_start() override {
@@ -88,11 +70,6 @@ protected:
         if (receiver_->get_joints_angles(left_joint_angles, right_joint_angles)) {
             // ----------------------Left-------------------------
             if (left_robot_state_ && !left_joint_angles.empty()) {
-                // Apply low-pass filter to left joint angles
-                for (size_t i = 0; i < left_joint_angles.size(); ++i) {
-                    left_joint_angles[i] = left_filters_[i].update(left_joint_angles[i]);
-                }
-
                 // New data available - convert to JointState and update left robot state
                 std::vector<JointState> left_joint_states(left_joint_angles.size());
                 for (size_t i = 0; i < left_joint_angles.size(); ++i) {
@@ -113,11 +90,6 @@ protected:
 
             // ----------------------Right-------------------------
             if (right_robot_state_ && !right_joint_angles.empty()) {
-                // Apply low-pass filter to right joint angles
-                for (size_t i = 0; i < right_joint_angles.size(); ++i) {
-                    right_joint_angles[i] = right_filters_[i].update(right_joint_angles[i]);
-                }
-
                 // New data available - convert to JointState and update right robot state
                 std::vector<JointState> right_joint_states(right_joint_angles.size());
                 for (size_t i = 0; i < right_joint_angles.size(); ++i) {
@@ -191,8 +163,6 @@ private:
     UdpJointReceiver* receiver_;
     uint64_t update_count_;
     double hz_;
-    std::vector<LowPassFilter> left_filters_;
-    std::vector<LowPassFilter> right_filters_;
 };
 
 // Thread to control the follower arm
@@ -364,22 +334,7 @@ int main(int argc, char** argv) {
             right_robot_state = std::make_shared<RobotSystemState>(right_arm_motor_num, right_hand_motor_num);
         }
 
-        // Create control instances
-        Control* left_control = nullptr;
-        Control* right_control = nullptr;
-
-        if (use_left_arm) {
-            left_control = new Control(left_openarm, left_arm_dynamics, left_arm_dynamics, left_robot_state,
-                                       1.0 / FOLLOW_FREQUENCY, ROLE_FOLLOWER, "left_arm", left_arm_motor_num,
-                                       left_hand_motor_num);
-        }
-        if (use_right_arm) {
-            right_control = new Control(right_openarm, right_arm_dynamics, right_arm_dynamics, right_robot_state,
-                                        1.0 / FOLLOW_FREQUENCY, ROLE_FOLLOWER, "right_arm", right_arm_motor_num,
-                                        right_hand_motor_num);
-        }
-
-        // Load control parameters from YAML and set to controllers
+        // Load control parameters from YAML
         std::cout << "\n[INFO] Loading control parameters..." << std::endl;
         YamlLoader loader("config/follower.yaml");
         std::vector<double> l_kp = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Kp");
@@ -394,19 +349,28 @@ int main(int argc, char** argv) {
         std::vector<double> r_k = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "k");
         std::vector<double> r_Fv = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "Fv");
         std::vector<double> r_Fo = loader.get_vector_by_two_levels("FollowerArmParam", "Right", "Fo");
-        if (left_control) {
+        std::vector<double> filter_alphas = loader.get_vector("UdpReceiverFilter", "FilterAlphas");
+        // Create control instances
+        Control* left_control = nullptr;
+        Control* right_control = nullptr;
+        if (use_left_arm) {
+            left_control = new Control(left_openarm, left_arm_dynamics, left_arm_dynamics, left_robot_state,
+                                       1.0 / FOLLOW_FREQUENCY, ROLE_FOLLOWER, "left_arm", left_arm_motor_num,
+                                       left_hand_motor_num, filter_alphas);
             left_control->SetParameter(l_kp, l_kd, l_Fc, l_k, l_Fv, l_Fo);
         }
-        if (right_control) {
+        if (use_right_arm) {
+            right_control = new Control(right_openarm, right_arm_dynamics, right_arm_dynamics, right_robot_state,
+                                        1.0 / FOLLOW_FREQUENCY, ROLE_FOLLOWER, "right_arm", right_arm_motor_num,
+                                        right_hand_motor_num, filter_alphas);
             right_control->SetParameter(r_kp, r_kd, r_Fc, r_k, r_Fv, r_Fo);
         }
-        std::cout << "[INFO] Control parameters loaded" << std::endl;
+        std::cout << "[INFO] Control loaded" << std::endl;
 
-        // Load UDP receiver filter parameters
-        std::vector<double> filter_alphas = loader.get_vector("UdpReceiverFilter", "FilterAlphas");
-        std::cout << "[INFO] UDP receiver filter parameters loaded" << std::endl;
-        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, filter_alphas);
+
+        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY);
         udp_thread.start_thread();
+        std::cout << "[INFO] UDP receiver loaded" << std::endl;
         std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;
 
         // Insure initial position is received and static before starting control

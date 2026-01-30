@@ -72,12 +72,8 @@ target_link_libraries(
 # -----------------------------
 add_executable(gravity_comp control/gravity_compasation.cpp)
 add_executable(comm_test control/openarm_communication_test.cpp)
-add_executable(unilateral_control control/openarm_unilateral_control.cpp)
-add_executable(bilateral_control control/openarm_bilateral_control.cpp)
 add_executable(rebocap_control control/udp_openarm_control.cpp)
 
 target_link_libraries(gravity_comp PRIVATE openarm_teleop_lib)
 target_link_libraries(comm_test PRIVATE openarm_teleop_lib)
-target_link_libraries(unilateral_control PRIVATE openarm_teleop_lib)
-target_link_libraries(bilateral_control PRIVATE openarm_teleop_lib)
 target_link_libraries(rebocap_control PRIVATE openarm_teleop_lib rt)

@@ -23,35 +23,10 @@
 #include <iomanip>
 #include <thread>
 
-PID::PID(double min, double max) {
-  out_ = 0;
-  error_ = 0;
-  last_error_ = 0;
-  error_sum_ = 0;
-  proportion_ = 0.4;
-  integral_ = 0.000000013;
-  differential_ = 2.1;
-  min_ = min;
-  max_ = max;
-}
-
-double PID::update(double cur_error) {
-  last_error_ = error_;
-  error_ = cur_error;
-  error_sum_ += cur_error;
-
-  LIMIT(error_sum_, -50, 50);
-
-  out_ = proportion_ * error_ + differential_ * (error_ - last_error_) +
-         error_sum_ * integral_;
-  LIMIT(out_, min_, max_);
-  return out_;
-}
-
-
 Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynamics* dynamics_f,
                  std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
-                 size_t arm_motor_num, size_t hand_motor_num)
+                 size_t arm_motor_num, size_t hand_motor_num, 
+                 std::vector<double> filter_alphas=std::vector<double>(7, 0.1))
     : openarm_(arm),
       dynamics_l_(dynamics_l),
       dynamics_f_(dynamics_f),
@@ -64,10 +39,9 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
     openarmjointconverter_ = new OpenArmJointConverter(arm_motor_num_);
     openarmgripperjointconverter_ = new OpenArmJGripperJointConverter(hand_motor_num_);
 
-    // Initialize joint angle PIDs
-    joint_angle_pids_.resize(arm_motor_num_);
-    for (size_t i = 0; i < arm_motor_num_; ++i) {
-        joint_angle_pids_[i] = std::make_unique<PID>(position_limit_min_L[i], position_limit_max_L[i]);
+    // Initialize filters with individual alphas for each joint
+    for (size_t i = 0; i < filter_alphas.size(); ++i) {
+        filters_.push_back(LowPassFilter(filter_alphas[i]));
     }
 
     // Open joint writer file
@@ -78,7 +52,8 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
 
 Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynamics* dynamics_f,
                  std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
-                 std::string arm_type, size_t arm_motor_num, size_t hand_motor_num)
+                 std::string arm_type, size_t arm_motor_num, size_t hand_motor_num, 
+                 std::vector<double> filter_alphas=std::vector<double>(7, 0.1))
     : openarm_(arm),
       dynamics_l_(dynamics_l),
       dynamics_f_(dynamics_f),
@@ -93,13 +68,12 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
 
     arm_type_ = arm_type;
 
-    // Initialize joint angle PIDs
-    joint_angle_pids_.resize(arm_motor_num_);
-    for (size_t i = 0; i < arm_motor_num_; ++i) {
-        joint_angle_pids_[i] = std::make_unique<PID>(position_limit_min_L[i], position_limit_max_L[i]);
+    // Initialize filters with individual alphas for each joint
+    for (size_t i = 0; i < filter_alphas.size(); ++i) {
+        filters_.push_back(LowPassFilter(filter_alphas[i]));
     }
-
-    // Open joint writer file
+    
+        // Open joint writer file
     if (arm_type_ == "left_arm") joint_writer_.open("joint_angles_left.txt", std::ios::out);
     else joint_writer_.open("joint_angles_right.txt", std::ios::out);
     if (joint_writer_.is_open()) {
@@ -118,17 +92,6 @@ Control::~Control() {
     delete differentiator_;
 }
 
-// bool Control::Setup(void)
-// {
-//         // double motor_position[NMOTORS] = {0.0};
-
-//         // ComputeJointPosition(motor_position, response_->position.data());
-
-//         std::cout << "!control->Setup()  finished "<< std::endl;
-
-//         return true;
-// }
-
 void Control::Shutdown(void) {
     std::cout << "control shutdown !!!" << std::endl;
 
@@ -144,129 +107,6 @@ void Control::SetParameter(const std::vector<double>& Kp, const std::vector<doub
     k_ = k;
     Fv_ = Fv;
     Fo_ = Fo;
-}
-
-bool Control::bilateral_step() {
-    // get motor status
-    std::vector<MotorState> arm_motor_states;
-    const auto& arm_motors = openarm_->get_arm().get_motors();
-    for (size_t i = 0; i < arm_motors.size(); ++i) {
-        const auto& motor = arm_motors[i];
-        arm_motor_states.push_back({motor.get_position(), motor.get_velocity(), 0});
-    }
-
-    std::vector<MotorState> gripper_motor_states;
-    const auto& gripper_motors = openarm_->get_gripper().get_motors();
-    for (size_t i = 0; i < gripper_motors.size(); ++i) {
-        const auto& motor = gripper_motors[i];
-        gripper_motor_states.push_back({motor.get_position(), motor.get_velocity(), 0});
-    }
-
-    // convert joint to motor
-    std::vector<JointState> joint_arm_states =
-        openarmjointconverter_->motor_to_joint(arm_motor_states);
-    std::vector<JointState> joint_gripper_states =
-        openarmgripperjointconverter_->motor_to_joint(gripper_motor_states);
-
-    // set reponse
-    robot_state_->arm_state().set_all_responses(joint_arm_states);
-    robot_state_->hand_state().set_all_responses(joint_gripper_states);
-
-    size_t arm_dof = robot_state_->arm_state().get_size();
-    size_t gripper_dof = robot_state_->hand_state().get_size();
-
-    std::vector<double> joint_arm_positions(arm_dof, 0.0);
-    std::vector<double> joint_arm_velocities(arm_dof, 0.0);
-    std::vector<double> joint_arm_efforts(arm_dof, 0.0);
-
-    std::vector<double> joint_gripper_positions(gripper_dof, 0.0);
-    std::vector<double> joint_gripper_velocities(gripper_dof, 0.0);
-    std::vector<double> joint_gripper_efforts(gripper_dof, 0.0);
-
-    for (size_t i = 0; i < arm_dof; ++i) {
-        joint_arm_positions[i] = joint_arm_states[i].position;
-        joint_arm_velocities[i] = joint_arm_states[i].velocity;
-    }
-
-    for (size_t i = 0; i < gripper_dof; ++i) {
-        joint_gripper_positions[i] = joint_gripper_states[i].position;
-        joint_gripper_velocities[i] = joint_gripper_states[i].velocity;
-    }
-
-    std::vector<double> gravity(arm_dof, 0.0);
-    std::vector<double> coriolis(arm_dof, 0.0);
-    std::vector<double> friction(arm_dof + gripper_dof, 0.0);
-
-    std::vector<JointState> joint_arm_states_ref = robot_state_->arm_state().get_all_references();
-    std::vector<JointState> joint_gripper_states_ref =
-        robot_state_->hand_state().get_all_references();
-
-    std::vector<double> joint_arm_positions_ref(arm_dof);
-
-    for (size_t i = 0; i < arm_dof; ++i) {
-        joint_arm_positions_ref[i] = joint_arm_states_ref[i].position;
-    }
-
-    if (role_ == ROLE_LEADER) {
-        dynamics_l_->GetGravity(joint_arm_positions.data(), gravity.data());
-        dynamics_l_->GetCoriolis(joint_arm_positions.data(), joint_arm_velocities.data(),
-                                 coriolis.data());
-
-    } else if (role_ == ROLE_FOLLOWER) {
-        dynamics_f_->GetGravity(joint_arm_positions.data(), gravity.data());
-        dynamics_f_->GetCoriolis(joint_arm_positions.data(), joint_arm_velocities.data(),
-                                 coriolis.data());
-    }
-
-    // Friction (compute joint friction)
-    for (size_t i = 0; i < joint_arm_velocities.size(); ++i)
-        ComputeFriction(joint_arm_velocities.data(), friction.data(), i);
-    for (size_t i = 0; i < joint_gripper_velocities.size(); ++i)
-        ComputeFriction(joint_gripper_velocities.data(), friction.data(),
-                        joint_arm_velocities.size() + i);
-
-    // set gravity and friciton comp joint torque value
-    for (size_t i = 0; i < arm_dof; i++) {
-        joint_arm_states_ref[i].effort = gravity[i] + friction[i];
-    }
-
-    for (size_t i = 0; i < gripper_dof; i++) {
-        joint_gripper_states_ref[i].effort = friction[i + arm_dof];
-    }
-
-    std::vector<MotorState> motor_arm_states =
-        openarmjointconverter_->joint_to_motor(joint_arm_states_ref);
-    std::vector<MotorState> motor_gripper_states =
-        openarmgripperjointconverter_->joint_to_motor(joint_gripper_states_ref);
-
-    // kp kd q dq tau
-    std::vector<openarm::damiao_motor::MITParam> arm_cmds;
-    arm_cmds.reserve(arm_dof);
-    for (size_t i = 0; i < arm_dof; ++i) {
-        arm_cmds.emplace_back(openarm::damiao_motor::MITParam{
-            Kp_[i], Kd_[i], motor_arm_states[i].position, motor_arm_states[i].velocity,
-            motor_arm_states[i].effort});
-    }
-
-    // gripper command mit param
-    std::vector<openarm::damiao_motor::MITParam> gripper_cmds;
-    gripper_cmds.reserve(gripper_dof);
-    for (size_t i = 0; i < gripper_dof; ++i) {
-        gripper_cmds.emplace_back(openarm::damiao_motor::MITParam{
-            Kp_[i + arm_dof], Kd_[i + arm_dof], motor_gripper_states[i].position,
-            motor_gripper_states[i].velocity, motor_gripper_states[i].effort});
-    }
-
-    // send command to arm
-    openarm_->get_arm().mit_control_all(arm_cmds);
-    // send command to gripper
-    openarm_->get_gripper().mit_control_all(gripper_cmds);
-
-    std::this_thread::sleep_for(std::chrono::microseconds(200));
-
-    openarm_->recv_all(220);
-
-    return true;
 }
 
 bool Control::unilateral_step() {
@@ -384,6 +224,11 @@ bool Control::unilateral_step() {
             robot_state_->arm_state().get_all_references();
         std::vector<JointState> joint_hand_states_ref =
             robot_state_->hand_state().get_all_references();
+
+        // Apply low-pass filter to joint angles
+        for (size_t i = 0; i < joint_arm_states_ref.size(); ++i) {
+            joint_arm_states_ref[i].position = filters_[i].update(joint_arm_states_ref[i].position);
+        }
 
         // **Just Test Torque**
         // joint_arm_states_ref = joint_arm_states;

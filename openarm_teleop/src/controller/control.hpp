@@ -37,29 +37,6 @@
 #include <robot_state.hpp>
 #include <utility>
 
-class PID {
-public:
-  PID(double min, double max);
-
-  double update(double cur_error);
-
-  double limit(double value) {
-    LIMIT(value, min_, max_);
-    return value;
-  }
-  
-private:
-  double out_{0};
-  double error_{0};
-  double last_error_{0};
-  double error_sum_{0};
-  double proportion_{0.4};
-  double integral_{0.000000013};
-  double differential_{2.1};
-  double min_;
-  double max_;
-};
-
 class Control {
     openarm::can::socket::OpenArm *openarm_;
 
@@ -91,20 +68,38 @@ class Control {
     std::deque<double> velocity_buffer_[NJOINTS];
     
 public:
+
+    // Low-pass filter class for smoothing joint angles
+    struct LowPassFilter {
+        LowPassFilter(double alpha) : alpha(alpha), prev_output(0.0) {}
+        double update(double input) {
+            if (!initialized) {
+                prev_output = input;
+                initialized = true;
+                return input;
+            }
+            double output = alpha * input + (1.0 - alpha) * prev_output;
+            prev_output = output;
+            return output;
+        }
+        bool initialized{false};
+        double alpha;
+        double prev_output;
+    };
+    std::vector<LowPassFilter> filters_;
+
     Control(openarm::can::socket::OpenArm *arm, Dynamics *dynamics_l, Dynamics *dynamics_f,
             std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
-            size_t arm_joint_num, size_t hand_motor_num);
+            size_t arm_joint_num, size_t hand_motor_num, std::vector<double> filter_alphas);
     Control(openarm::can::socket::OpenArm *arm, Dynamics *dynamics_l, Dynamics *dynamics_f,
             std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
-            std::string arm_type, size_t arm_joint_num, size_t hand_motor_num);
+            std::string arm_type, size_t arm_joint_num, size_t hand_motor_num, std::vector<double> filter_alphas);
     ~Control();
 
     std::shared_ptr<RobotSystemState> response_;
     std::shared_ptr<RobotSystemState> reference_;
 
     std::vector<double> Dn_, Kp_, Kd_, Fc_, k_, Fv_, Fo_;
-
-    std::vector<std::unique_ptr<PID>> joint_angle_pids_;
 
     // bool Setup(void);
     void Setstate(int state);
@@ -116,8 +111,7 @@ public:
 
     bool AdjustPosition(void);
 
-    // Compute torque based on bilateral
-    bool bilateral_step();
+    // Control step for unilateral control
     bool unilateral_step();
 
     // NOTE! Control() class operates on "joints", while the underlying

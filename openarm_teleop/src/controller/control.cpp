@@ -153,65 +153,8 @@ bool Control::unilateral_step() {
     std::vector<double> coriolis(arm_dof, 0.0);
     std::vector<double> friction(arm_dof + gripper_dof, 0.0);
 
-    if (role_ == ROLE_LEADER) {
-        // calc dynamics
-        dynamics_l_->GetGravity(joint_arm_positions.data(), gravity.data());
-        dynamics_l_->GetCoriolis(joint_arm_positions.data(), joint_arm_velocities.data(),
-                                 coriolis.data());
-
-        for (size_t i = 0; i < joint_arm_velocities.size(); ++i)
-            ComputeFriction(joint_arm_velocities.data(), friction.data(), i);
-
-        for (size_t i = 0; i < joint_gripper_velocities.size(); ++i)
-            ComputeFriction(joint_gripper_velocities.data(), friction.data(), arm_dof + i);
-
-        // arm joint state
-        std::vector<JointState> joint_arm_state_torque(arm_dof);
-        for (size_t i = 0; i < arm_dof; ++i) {
-            joint_arm_state_torque[i].position = joint_arm_positions[i];
-            joint_arm_state_torque[i].velocity = joint_arm_velocities[i];
-            joint_arm_state_torque[i].effort = gravity[i] + friction[i] * 0.3 + coriolis[i] * 0.1;
-        }
-
-        // gripper joint state
-        std::vector<JointState> joint_gripper_state_torque(gripper_dof);
-        for (size_t i = 0; i < gripper_dof; ++i) {
-            joint_gripper_state_torque[i].position = joint_gripper_positions[i];
-            joint_gripper_state_torque[i].velocity = joint_gripper_velocities[i];
-            joint_gripper_state_torque[i].effort = friction[arm_dof + i] * 0.3;
-        }
-
-        std::vector<MotorState> motor_arm_states =
-            openarmjointconverter_->joint_to_motor(joint_arm_state_torque);
-        std::vector<MotorState> motor_gripper_states =
-            openarmgripperjointconverter_->joint_to_motor(joint_gripper_state_torque);
-
-        // arm command mit param
-        std::vector<openarm::damiao_motor::MITParam> arm_cmds;
-        arm_cmds.reserve(arm_dof);
-        for (size_t i = 0; i < arm_dof; ++i) {
-            arm_cmds.emplace_back(
-                openarm::damiao_motor::MITParam{0.0, 0.0, 0.0, 0.0, motor_arm_states[i].effort});
-        }
-
-        // gripper command mit param
-        std::vector<openarm::damiao_motor::MITParam> gripper_cmds;
-        gripper_cmds.reserve(gripper_dof);
-        for (size_t i = 0; i < gripper_dof; ++i) {
-            gripper_cmds.emplace_back(openarm::damiao_motor::MITParam{
-                0.0, 0.0, 0.0, 0.0, motor_gripper_states[i].effort});
-        }
-
-        // send command to arm
-        openarm_->get_arm().mit_control_all(arm_cmds);
-        // send command to gripper
-        openarm_->get_gripper().mit_control_all(gripper_cmds);
-
-        openarm_->recv_all(200);
-
-        return true;
-
-    } else if (role_ == ROLE_FOLLOWER) {
+    if (role_ == ROLE_LEADER) {} 
+    else if (role_ == ROLE_FOLLOWER) {
         // calc dynamics for gravity and friction compensation
         dynamics_f_->GetGravity(joint_arm_positions.data(), gravity.data());
         dynamics_f_->GetCoriolis(joint_arm_positions.data(), joint_arm_velocities.data(), coriolis.data());

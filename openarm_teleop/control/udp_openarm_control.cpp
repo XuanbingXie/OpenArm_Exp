@@ -394,13 +394,19 @@ int main(int argc, char** argv) {
         if (right_control) {
             right_control->SetParameter(kp, kd, Fc, k, Fv, Fo);
         }
-        std::cout << "[INFO] ✅ Control parameters loaded" << std::endl;
+        std::cout << "[INFO] Control parameters loaded" << std::endl;
 
         // Load UDP receiver filter parameters
         std::vector<double> filter_alphas = loader.get_vector("UdpReceiverFilter", "FilterAlphas");
-        std::cout << "[INFO] ✅ UDP receiver filter parameters loaded" << std::endl;
+        std::cout << "[INFO] UDP receiver filter parameters loaded" << std::endl;
+        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, filter_alphas);
+        udp_thread.start_thread();
+        std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;
+        
+        // Insure initial position is received
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        // Move to home position
+        // Initialize home position
         std::cout << "\n[INFO] Moving to home position..." << std::endl;
         if (left_control) {
             left_control->AdjustPosition();
@@ -408,16 +414,13 @@ int main(int argc, char** argv) {
         if (right_control) {
             right_control->AdjustPosition();
         }
-        std::cout << "[INFO] ✅ Home positions reached" << std::endl;
+        std::cout << "[INFO] Home positions reached" << std::endl;
+
 
         // Create and start control threads
         std::cout << "\n[INFO] Starting control threads..." << std::endl;
-        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, filter_alphas);
         FollowerArmThread* left_follower_thread = nullptr;
         FollowerArmThread* right_follower_thread = nullptr;
-
-        udp_thread.start_thread();
-
         if (left_control) {
             left_follower_thread = new FollowerArmThread(left_robot_state, left_control, FOLLOW_FREQUENCY);
             left_follower_thread->start_thread();
@@ -427,7 +430,6 @@ int main(int argc, char** argv) {
             right_follower_thread->start_thread();
         }
 
-        std::cout << "   Receiving joint angles via UDP on port " << udp_port << std::endl;
 
         // Main loop - just wait for interrupt
         while (keep_running) {

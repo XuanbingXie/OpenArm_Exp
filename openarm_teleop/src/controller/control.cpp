@@ -484,16 +484,21 @@ bool Control::AdjustPosition(void) {
     std::vector<JointState> joint_hand_now =
         openarmgripperjointconverter_->motor_to_joint(gripper_motor_states);
 
+    std::vector<JointState> joint_arm_states_ref_init =
+        robot_state_->arm_state().get_all_references();
+    std::vector<JointState> joint_hand_states_ref_init =
+        robot_state_->hand_state().get_all_references();
+
     std::vector<JointState> joint_arm_goal(NMOTORS - 1);
     for (size_t i = 0; i < NMOTORS - 1; ++i) {
-        joint_arm_goal[i].position = arm_type_ == "left_arm" ? L_INITIAL_POSITION[i] : R_INITIAL_POSITION[i];
+        joint_arm_goal[i].position = joint_arm_states_ref_init[i].position;
         joint_arm_goal[i].velocity = 0.0;
         joint_arm_goal[i].effort = 0.0;
     }
 
     std::vector<JointState> joint_hand_goal(joint_hand_now.size());
     for (size_t i = 0; i < joint_hand_goal.size(); ++i) {
-        joint_hand_goal[i].position = 0.0;
+        joint_hand_goal[i].position = joint_hand_states_ref_init[i].position;
         joint_hand_goal[i].velocity = 0.0;
         joint_hand_goal[i].effort = 0.0;
     }

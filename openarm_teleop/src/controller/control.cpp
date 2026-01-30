@@ -422,8 +422,7 @@ bool Control::unilateral_step() {
         }
 
         static int count = 0;
-        ++count;
-        if (count == 500) {
+        if (count++ == 500) {
             count = 0;
             if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
             else std::cout << "[Follower Right Arm] " << std::endl;
@@ -489,6 +488,10 @@ bool Control::AdjustPosition(void) {
     std::vector<JointState> joint_hand_states_ref_init =
         robot_state_->hand_state().get_all_references();
 
+    // for (const auto& joint : joint_arm_states_ref_init) {
+    //     std::cout << "Target Joint Position: " << joint.position << std::endl;
+    // }
+        
     std::vector<JointState> joint_arm_goal(NMOTORS - 1);
     for (size_t i = 0; i < NMOTORS - 1; ++i) {
         joint_arm_goal[i].position = joint_arm_states_ref_init[i].position;
@@ -504,7 +507,7 @@ bool Control::AdjustPosition(void) {
     }
 
     // std::vector<double> kp_arm_temp = {50, 50.0, 50.0, 50.0, 10.0, 10.0, 10.0};
-    std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 5.0, 5.0, 5.0, 3.0};
+    std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 10.0, 5.0, 5.0, 3.0};
     std::vector<double> kd_arm_temp = {1.2, 1.2, 1.2, 1.2, 0.3, 0.2, 0.3};
 
     std::vector<double> kp_hand_temp = {10.0};
@@ -540,9 +543,6 @@ bool Control::AdjustPosition(void) {
                                                                   arm_motor_refs[i].velocity, 0.0});
         }
         
-        // Test 
-        arm_cmds[0].tau = 1.0;
-
         std::vector<openarm::damiao_motor::MITParam> hand_cmds;
         hand_cmds.reserve(hand_motor_refs.size());
         for (size_t i = 0; i < hand_motor_refs.size(); ++i) {

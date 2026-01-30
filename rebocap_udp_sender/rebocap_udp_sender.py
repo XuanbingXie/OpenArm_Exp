@@ -138,7 +138,7 @@ class RoboCapUdpSender:
         l_j5 = (x + np.pi/2)
         l_wrist = R.from_quat(left_wrist, scalar_first=False)
         z, y, _ = l_wrist.as_euler('ZYX')
-        l_j6 = z
+        l_j6 = -z
         l_j7 = -y
 
 
@@ -171,7 +171,7 @@ class RoboCapUdpSender:
         r_j5 = -x - (np.pi/2)
         r_wrist = R.from_quat(right_wrist, scalar_first=False)
         z, y, _ = r_wrist.as_euler('ZYX')
-        r_j6 = z
+        r_j6 = -z
         r_j7 = -y
 
         joints = [l_j1, l_j2, l_j3, l_j4, l_j5, l_j6, l_j7,

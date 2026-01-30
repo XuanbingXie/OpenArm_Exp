@@ -65,7 +65,8 @@ public:
           receiver_(receiver), update_count_(0), hz_(hz) {
         // Initialize filters with individual alphas for each joint
         for (size_t i = 0; i < filter_alphas.size(); ++i) {
-            filters_.push_back(LowPassFilter(filter_alphas[i]));
+            left_filters_.push_back(LowPassFilter(filter_alphas[i]));
+            right_filters_.push_back(LowPassFilter(filter_alphas[i]));
         }
     }
 
@@ -89,7 +90,7 @@ protected:
             if (left_robot_state_ && !left_joint_angles.empty()) {
                 // Apply low-pass filter to left joint angles
                 for (size_t i = 0; i < left_joint_angles.size(); ++i) {
-                    left_joint_angles[i] = filters_[i].update(left_joint_angles[i]);
+                    left_joint_angles[i] = left_filters_[i].update(left_joint_angles[i]);
                 }
 
                 // New data available - convert to JointState and update left robot state
@@ -114,7 +115,7 @@ protected:
             if (right_robot_state_ && !right_joint_angles.empty()) {
                 // Apply low-pass filter to right joint angles
                 for (size_t i = 0; i < right_joint_angles.size(); ++i) {
-                    right_joint_angles[i] = filters_[i].update(right_joint_angles[i]);
+                    right_joint_angles[i] = right_filters_[i].update(right_joint_angles[i]);
                 }
 
                 // New data available - convert to JointState and update right robot state
@@ -135,18 +136,18 @@ protected:
                 right_robot_state_->hand_state().set_all_references(right_gripper_states);
             }
 
-            // Print status every 500 updates (~1 second at 500Hz)
-            if (++update_count_ % 500 == 0) {
-                std::cout << "[UdpReceiverThread] Updates: " << update_count_
-                          << " | Timestamp: " << receiver_->get_timestamp();
-                if (left_robot_state_) {
-                    std::cout << " | Left Gripper Torque: " << receiver_->get_left_gripper_torque();
-                }
-                if (right_robot_state_) {
-                    std::cout << " | Right Gripper Torque: " << receiver_->get_right_gripper_torque();
-                }
-                std::cout << std::endl;
-            }
+            // // Print status every 500 updates (~1 second at 500Hz)
+            // if (++update_count_ % 500 == 0) {
+            //     std::cout << "[UdpReceiverThread] Updates: " << update_count_
+            //               << " | Timestamp: " << receiver_->get_timestamp();
+            //     if (left_robot_state_) {
+            //         std::cout << " | Left Gripper Torque: " << receiver_->get_left_gripper_torque();
+            //     }
+            //     if (right_robot_state_) {
+            //         std::cout << " | Right Gripper Torque: " << receiver_->get_right_gripper_torque();
+            //     }
+            //     std::cout << std::endl;
+            // }
         }
 
         // Set gripper states (for Manus, position control)
@@ -166,10 +167,10 @@ protected:
             right_robot_state_->hand_state().set_all_references(right_gripper_states);
         }
 
-        // For debug
+        // // For debug
         // if (left_robot_state_) {
         //     static std::vector<JointState> debug_left_joint_angles{
-        //         {-0.6, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
+        //         {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
         //         {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
         //         {0.0, 0.0, 0.0}};
         //     left_robot_state_->arm_state().set_all_references(debug_left_joint_angles);
@@ -177,7 +178,7 @@ protected:
 
         // if (right_robot_state_) {
         //     static std::vector<JointState> debug_right_joint_angles{
-        //         {-0.6, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
+        //         {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
         //         {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
         //         {0.0, 0.0, 0.0}};
         //     right_robot_state_->arm_state().set_all_references(debug_right_joint_angles);
@@ -190,7 +191,8 @@ private:
     UdpJointReceiver* receiver_;
     uint64_t update_count_;
     double hz_;
-    std::vector<LowPassFilter> filters_;
+    std::vector<LowPassFilter> left_filters_;
+    std::vector<LowPassFilter> right_filters_;
 };
 
 // Thread to control the follower arm
@@ -407,8 +409,9 @@ int main(int argc, char** argv) {
         udp_thread.start_thread();
         std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;
 
-        // Insure initial position is received
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Insure initial position is received and static before starting control
+        std::cout << "\n[INFO] Start initialize home position, please don't move arms in 6 secs........" << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(3));
 
         // Initialize home position
         std::cout << "\n[INFO] Moving to home position..." << std::endl;

@@ -100,7 +100,8 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
     }
 
     // Open joint writer file
-    joint_writer_.open("joint_angles.txt", std::ios::out);
+    if (arm_type_ == "left_arm") joint_writer_.open("joint_angles_left.txt", std::ios::out);
+    else joint_writer_.open("joint_angles_right.txt", std::ios::out);
     if (joint_writer_.is_open()) {
         joint_writer_ << "timestamp,arm_ref_0,arm_ref_1,arm_ref_2,arm_ref_3,arm_ref_4,arm_ref_5,arm_ref_6,"
                       << "arm_cur_0,arm_cur_1,arm_cur_2,arm_cur_3,arm_cur_4,arm_cur_5,arm_cur_6,"
@@ -384,18 +385,29 @@ bool Control::unilateral_step() {
         std::vector<JointState> joint_hand_states_ref =
             robot_state_->hand_state().get_all_references();
 
-        // set gravity and friction comp joint torque value
-        for (size_t i = 0; i < arm_dof; i++) {
-            joint_arm_states_ref[i].effort = gravity[i] + friction[i];
-        }
-
+        // **Just Test Torque**
+        // joint_arm_states_ref = joint_arm_states;
+        // joint_hand_states_ref = joint_gripper_states;
+        // // set gravity and friction comp joint torque value
+        // for (size_t i = 0; i < arm_dof; i++) {
+        //     if (arm_type_ == "left_arm") {
+        //         if(i < 3) {
+        //             joint_arm_states_ref[i].effort = gravity[i] + friction[i];
+        //         }
+        //     } else {
+        //         if (i < 4) {
+        //             if (i != 2) joint_arm_states_ref[i].effort = gravity[i] + friction[i];
+        //             else joint_arm_states_ref[i].effort = friction[i];
+        //         }
+        //     }
+        // }
+        
         // Write joint angles to file
         if (debug_) {
             static int count = 0;
             ++count;
-            if (count == 10) {
+            if (count % 10 == 0) {
                 write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
-                count = 0;
             }
         }
 
@@ -435,6 +447,10 @@ bool Control::unilateral_step() {
             for (const auto& motor : arm_motor_states) {
                 std::cout << std::fixed << std::setprecision(2) << motor.position << " ";
             }
+            // std::cout << std::endl;
+            // std::cout << "[Follower] Effort: " << joint_arm_states_ref[0].effort << ", "
+            // << joint_arm_states_ref[1].effort << ", "
+            // << joint_arm_states_ref[2].effort << std::endl;
         }
         openarm_->get_arm().mit_control_all(arm_cmds);
         openarm_->get_gripper().mit_control_all(hand_cmds);

@@ -135,7 +135,7 @@ public:
 
     // For debug
     // Write joint angles to file
-    bool debug_{true};
+    bool debug_{false};
     void write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
                                      const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current);
 

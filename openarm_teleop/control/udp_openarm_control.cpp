@@ -227,8 +227,8 @@ int main(int argc, char** argv) {
         // Parse command line arguments
         std::string urdf_path;
         std::string arm_mode = "dual";
-        std::string can_interface1 = "can0";
-        std::string can_interface2 = "can1";
+        std::string can_interface1 = "can1";
+        std::string can_interface2 = "can0";
         int udp_port = 5678;
 
         if (argc < 2) {
@@ -236,9 +236,9 @@ int main(int argc, char** argv) {
                       << std::endl;
             std::cerr << "arm_mode: dual (default), single_left, single_right" << std::endl;
             std::cerr << "Examples:" << std::endl;
-            std::cerr << "  Dual arm: " << argv[0] << " /path/to/openarm.urdf dual can0 can1 5678" << std::endl;
-            std::cerr << "  Single left: " << argv[0] << " /path/to/openarm.urdf single_left can0 5678" << std::endl;
-            std::cerr << "  Single right: " << argv[0] << " /path/to/openarm.urdf single_right can1 5678" << std::endl;
+            std::cerr << "  Dual arm: " << argv[0] << " /path/to/openarm.urdf dual can1 can0 5678" << std::endl;
+            std::cerr << "  Single left: " << argv[0] << " /path/to/openarm.urdf single_left can1 5678" << std::endl;
+            std::cerr << "  Single right: " << argv[0] << " /path/to/openarm.urdf single_right can0 5678" << std::endl;
             return 1;
         }
 

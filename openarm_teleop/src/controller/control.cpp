@@ -425,6 +425,8 @@ bool Control::unilateral_step() {
         ++count;
         if (count == 500) {
             count = 0;
+            if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
+            else std::cout << "[Follower Right Arm] " << std::endl;
             std::cout << "[Follower] Joint Pos Ref: ";
             for (const auto& joint : joint_arm_states_ref) {
                 std::cout << std::fixed << std::setprecision(2) << joint.position << " ";

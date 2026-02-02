@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <kdl/utilities/utility.h>
 #include <atomic>
 #include <chrono>
 #include <controller/control.hpp>
@@ -337,6 +338,7 @@ int main(int argc, char** argv) {
         // Load control parameters from YAML
         std::cout << "\n[INFO] Loading control parameters..." << std::endl;
         YamlLoader loader("config/follower.yaml");
+        bool debug = loader.get_string("Debug") == "enabled" ? true : false;
         std::vector<double> l_kp = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Kp");
         std::vector<double> l_kd = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Kd");
         std::vector<double> l_Fc = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Fc");
@@ -358,13 +360,16 @@ int main(int argc, char** argv) {
                                        1.0 / FOLLOW_FREQUENCY, ROLE_FOLLOWER, "left_arm", left_arm_motor_num,
                                        left_hand_motor_num, filter_alphas);
             left_control->SetParameter(l_kp, l_kd, l_Fc, l_k, l_Fv, l_Fo);
+            if (debug) left_control->debug = true;
         }
         if (use_right_arm) {
             right_control = new Control(right_openarm, right_arm_dynamics, right_arm_dynamics, right_robot_state,
                                         1.0 / FOLLOW_FREQUENCY, ROLE_FOLLOWER, "right_arm", right_arm_motor_num,
                                         right_hand_motor_num, filter_alphas);
             right_control->SetParameter(r_kp, r_kd, r_Fc, r_k, r_Fv, r_Fo);
+            if (debug) right_control->debug = true;
         }
+
         std::cout << "[INFO] Control loaded" << std::endl;
 
 

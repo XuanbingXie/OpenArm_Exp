@@ -19,36 +19,10 @@
 #include <cmath>
 #include <controller/control.hpp>
 #include <controller/dynamics.hpp>
+#include <cstddef>
 #include <fstream>
 #include <iomanip>
 #include <thread>
-
-Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynamics* dynamics_f,
-                 std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
-                 size_t arm_motor_num, size_t hand_motor_num, 
-                 std::vector<double> filter_alphas=std::vector<double>(7, 0.1))
-    : openarm_(arm),
-      dynamics_l_(dynamics_l),
-      dynamics_f_(dynamics_f),
-      robot_state_(robot_state),
-      Ts_(Ts),
-      role_(role),
-      arm_motor_num_(arm_motor_num),
-      hand_motor_num_(hand_motor_num) {
-    differentiator_ = new Differentiator(Ts);
-    openarmjointconverter_ = new OpenArmJointConverter(arm_motor_num_);
-    openarmgripperjointconverter_ = new OpenArmJGripperJointConverter(hand_motor_num_);
-
-    // Initialize filters with individual alphas for each joint
-    for (size_t i = 0; i < filter_alphas.size(); ++i) {
-        filters_.push_back(LowPassFilter(filter_alphas[i]));
-    }
-
-    // Open joint writer file
-    if (debug_){
-        joint_writer_.open("joint_angles.txt", std::ios::out);
-    }
-}
 
 Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynamics* dynamics_f,
                  std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,
@@ -101,12 +75,20 @@ void Control::Shutdown(void) {
 void Control::SetParameter(const std::vector<double>& Kp, const std::vector<double>& Kd,
                            const std::vector<double>& Fc, const std::vector<double>& k,
                            const std::vector<double>& Fv, const std::vector<double>& Fo) {
+    // Real values
     Kp_ = Kp;
     Kd_ = Kd;
     Fc_ = Fc;
     k_ = k;
     Fv_ = Fv;
     Fo_ = Fo;
+
+    // Soft values
+    for (double kp: Kp) {
+        soft_kp_.push_back(kp * init_ratio_);
+    }
+    // Calculate increment step
+    incre_step_ratio_ = (1.0 - init_ratio_) / (init_time_ / Ts_);             
 }
 
 bool Control::unilateral_step() {
@@ -190,24 +172,17 @@ bool Control::unilateral_step() {
         //     }
         // }
         
-        // Write joint angles to file
-        if (debug_) {
-            static int count = 0;
-            ++count;
-            if (count % 10 == 0) {
-                write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
-            }
-        }
-
+        
         // Joint → Motor
         std::vector<MotorState> arm_motor_refs =
-            openarmjointconverter_->joint_to_motor(joint_arm_states_ref);
+        openarmjointconverter_->joint_to_motor(joint_arm_states_ref);
         std::vector<MotorState> hand_motor_refs =
-            openarmgripperjointconverter_->joint_to_motor(joint_hand_states_ref);
+        openarmgripperjointconverter_->joint_to_motor(joint_hand_states_ref);
+        
 
         std::vector<openarm::damiao_motor::MITParam> arm_cmds;
         for (size_t i = 0; i < arm_motor_refs.size(); ++i) {
-            arm_cmds.emplace_back(openarm::damiao_motor::MITParam{Kp_[i], Kd_[i],
+            arm_cmds.emplace_back(openarm::damiao_motor::MITParam{soft_kp_[i], Kd_[i],
                                                                    arm_motor_refs[i].position,
                                                                    arm_motor_refs[i].velocity,
                                                                    arm_motor_refs[i].effort});
@@ -217,29 +192,54 @@ bool Control::unilateral_step() {
         hand_cmds.reserve(hand_motor_refs.size());
         for (size_t i = 0; i < hand_motor_refs.size(); ++i) {
             hand_cmds.emplace_back(openarm::damiao_motor::MITParam{
-                Kp_[arm_dof+i], Kd_[arm_dof+i], hand_motor_refs[i].position,
+                soft_kp_[arm_dof+i], Kd_[arm_dof+i], hand_motor_refs[i].position,
                 hand_motor_refs[i].velocity, hand_motor_refs[i].effort});
         }
 
-        static int count = 0;
-        if (count++ == 500) {
-            count = 0;
-            if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
-            else std::cout << "[Follower Right Arm] " << std::endl;
-            std::cout << "[Follower] Joint Pos Ref: ";
-            for (const auto& joint : joint_arm_states_ref) {
-                std::cout << std::fixed << std::setprecision(2) << joint.position << " ";
+        // Update soft kp for next step
+        if (soft_kp_[0] < Kp_[0]) {
+            for (size_t i = 0; i < soft_kp_.size(); ++i) {
+                soft_kp_[i] += Kp_[i] * incre_step_ratio_;
+                if (soft_kp_[i] > Kp_[i]) {
+                    soft_kp_[i] = Kp_[i];
+                }
             }
-            std::cout << std::endl;
-            std::cout << "[Follower] Motor Pos Now: ";
-            for (const auto& motor : arm_motor_states) {
-                std::cout << std::fixed << std::setprecision(2) << motor.position << " ";
-            }
-            // std::cout << std::endl;
-            // std::cout << "[Follower] Effort: " << joint_arm_states_ref[0].effort << ", "
-            // << joint_arm_states_ref[1].effort << ", "
-            // << joint_arm_states_ref[2].effort << std::endl;
         }
+
+
+        // Write joint angles to file
+        if (debug) {
+            static int count = 0;
+            ++count;
+            if (count % 10 == 0) {
+                write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
+            }
+            if (count % 500 == 0) {
+                if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
+                else std::cout << "[Follower Right Arm] " << std::endl;
+                std::cout << "[Follower] Joint Pos Ref: ";
+                for (const auto& joint : joint_arm_states_ref) {
+                    std::cout << std::fixed << std::setprecision(2) << joint.position << " ";
+                }
+                std::cout << std::endl;
+                std::cout << "[Follower] Motor Pos Now: ";
+                for (const auto& motor : arm_motor_states) {
+                    std::cout << std::fixed << std::setprecision(2) << motor.position << " ";
+                }
+                // std::cout << std::endl;
+                // std::cout << "[Follower] Effort: " << joint_arm_states_ref[0].effort << ", "
+                // << joint_arm_states_ref[1].effort << ", "
+                // << joint_arm_states_ref[2].effort << std::endl;
+            }
+            // if (count % 100 == 0) {
+            //     std::cout << "[Control] Soft Kp: ";
+            //     for (const auto& kp : soft_kp_) {
+            //         std::cout << kp << " ";
+            //     }
+            //     std::cout << std::endl;
+            // }
+        }
+
         openarm_->get_arm().mit_control_all(arm_cmds);
         openarm_->get_gripper().mit_control_all(hand_cmds);
 
@@ -307,7 +307,11 @@ bool Control::AdjustPosition(void) {
     }
 
     // std::vector<double> kp_arm_temp = {50, 50.0, 50.0, 50.0, 10.0, 10.0, 10.0};
-    std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 5.0, 5.0, 5.0, 3.0};
+    // std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 5.0, 5.0, 5.0, 3.0};
+    std::vector<double> kp_arm_temp;
+    for (size_t i = 0; i < NMOTORS - 1; ++i) {
+        kp_arm_temp.push_back(soft_kp_[i]);
+    }
     std::vector<double> kd_arm_temp = {1.2, 1.2, 1.2, 1.2, 0.3, 0.2, 0.3};
 
     std::vector<double> kp_hand_temp = {10.0};

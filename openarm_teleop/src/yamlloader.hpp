@@ -41,6 +41,13 @@ public:
         return get_node(node_name, key).as<std::vector<double>>();
     }
 
+    std::string get_string(const std::string& key) const {
+        if (!root_[key]) {
+            throw std::runtime_error("Key '" + key + "' not found.");
+        }
+        return root_[key].as<std::string>();
+    }
+
     // Check if key exists
     bool has(const std::string& node_name, const std::string& key) const {
         return root_[node_name] && root_[node_name][key];

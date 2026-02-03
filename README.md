@@ -137,7 +137,7 @@ make -j4
 
 ```shell
 ## 单臂模式
-./build/rebocap_control <urdf_path> single_left <arm_side> <can_interface> <udp_port>
+./build/rebocap_control <urdf_path> single_left <can_interface> <udp_port>
 ```
 
 ```shell

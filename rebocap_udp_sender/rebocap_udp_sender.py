@@ -168,7 +168,7 @@ class RoboCapUdpSender:
         r_elbow = R.from_quat(right_elbow, scalar_first=False)
         z, _, x = r_elbow.as_euler('ZYX')
         r_j4 = z
-        r_j5 = -x - (np.pi/2)
+        r_j5 = -x - (np.pi/4)
         r_wrist = R.from_quat(right_wrist, scalar_first=False)
         z, y, _ = r_wrist.as_euler('ZYX')
         r_j6 = -z

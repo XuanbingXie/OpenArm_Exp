@@ -266,7 +266,7 @@ int main(int argc, char** argv) {
         Dynamics* left_arm_dynamics = nullptr;
         if (use_left_arm) {
             std::string root_link = "openarm_body_link0";
-            std::string left_leaf_link = "openarm_left_hand";
+            std::string left_leaf_link = "left_hand_base_link";
 
             std::cout << "[INFO] Initializing dynamics model for left arm..." << std::endl;
             left_arm_dynamics = new Dynamics(urdf_path, root_link, left_leaf_link);
@@ -281,7 +281,7 @@ int main(int argc, char** argv) {
         Dynamics* right_arm_dynamics = nullptr;
         if (use_right_arm) {
             std::string root_link = "openarm_body_link0";
-            std::string right_leaf_link = "openarm_right_hand";
+            std::string right_leaf_link = "right_hand_base_link";
 
             std::cout << "[INFO] Initializing dynamics model for right arm..." << std::endl;
             right_arm_dynamics = new Dynamics(urdf_path, root_link, right_leaf_link);

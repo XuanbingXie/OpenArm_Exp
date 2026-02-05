@@ -190,9 +190,6 @@ private:
             } else if (recv_len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
                 std::cerr << "[UdpJointReceiver] recvfrom error: " << strerror(errno) << std::endl;
             }
-            
-            // No data available, sleep briefly
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
         
         std::cout << "[UdpJointReceiver] Receive loop stopped" << std::endl;
@@ -221,8 +218,7 @@ private:
         left_gripper_torque_ = static_cast<double>(pkt.left_gripper);
         right_gripper_torque_ = static_cast<double>(pkt.right_gripper);
         timestamp_ = static_cast<double>(pkt.timestamp);
-
-        sequence_number_++;
+        ++sequence_number_;
         data_ready_ = true;
     }
 

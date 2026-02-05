@@ -409,7 +409,7 @@ int main(int argc, char** argv) {
 
         // Main loop - just wait for interrupt
         while (keep_running) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            pause();
         }
 
         // Shutdown sequence

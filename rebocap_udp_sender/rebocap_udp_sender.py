@@ -4,7 +4,7 @@ RoboCap UDP Sender
 Reads data from RoboCap SDK and sends joint angles via UDP
 """
 
-from copy import deepcopy 
+from copy import deepcopy
 import time
 import threading
 import numpy as np
@@ -16,6 +16,7 @@ from scipy.spatial.transform import Slerp
 from contants import LEFT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE, RIGHT_JOINTS_MIN_VALUE, RIGHT_JOINTS_MAX_VALUE
 from shoulder_solver import IncrementalShoulderSolver
 from gripper_controller import GripperController
+from writer import Writer
 import rebocap_ws_sdk
 
 class ReboCapUdpSender:
@@ -68,6 +69,9 @@ class ReboCapUdpSender:
         # Initialize gripper controller
         self.gripper_controller = GripperController()
         # self.gripper_controller.start_gui()
+
+        # Initialize writer for debug
+        self.writer = Writer(debug=self.debug)
 
         # Setup signal handler
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -135,6 +139,9 @@ class ReboCapUdpSender:
                     interp_pose = self.interpolate_pose(last_pose, cur_pose, alpha)
                     joint_angles = self.map_to_openarm_joints_interp(interp_pose)
                     self.send_udp(now, joint_angles)
+                    # Record pre and post interpolation joints for debug
+                    pre_joints = self.map_to_openarm_joints_interp(cur_pose)
+                    self.writer.record(now, pre_joints, joint_angles)
             next_time += self.interval
 
     def interpolate_pose(self, pose1, pose2, alpha):

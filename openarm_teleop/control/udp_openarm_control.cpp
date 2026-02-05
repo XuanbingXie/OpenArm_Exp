@@ -70,7 +70,7 @@ protected:
         // Try to get new joint angles from UDP
         if (receiver_->get_joints_angles(left_joint_angles, right_joint_angles)) {
             // ----------------------Left-------------------------
-            if (left_robot_state_ && !left_joint_angles.empty()) {
+            if (left_robot_state_ ) {
                 // New data available - convert to JointState and update left robot state
                 std::vector<JointState> left_joint_states(left_joint_angles.size());
                 for (size_t i = 0; i < left_joint_angles.size(); ++i) {
@@ -80,17 +80,17 @@ protected:
                 }
                 left_robot_state_->arm_state().set_all_references(left_joint_states);
 
-                // Update left gripper (for gui, torque control)
-                double left_gripper_tor = receiver_->get_left_gripper_torque();
-                std::vector<JointState> left_gripper_states(1);
-                left_gripper_states[0].position = 0;
-                left_gripper_states[0].velocity = 0.0;
-                left_gripper_states[0].effort = left_gripper_tor;
-                left_robot_state_->hand_state().set_all_references(left_gripper_states);
+                // // Update left gripper (for gui, torque control)
+                // double left_gripper_tor = receiver_->get_left_gripper_torque();
+                // std::vector<JointState> left_gripper_states(1);
+                // left_gripper_states[0].position = 0;
+                // left_gripper_states[0].velocity = 0.0;
+                // left_gripper_states[0].effort = left_gripper_tor;
+                // left_robot_state_->hand_state().set_all_references(left_gripper_states);
             }
 
             // ----------------------Right-------------------------
-            if (right_robot_state_ && !right_joint_angles.empty()) {
+            if (right_robot_state_) {
                 // New data available - convert to JointState and update right robot state
                 std::vector<JointState> right_joint_states(right_joint_angles.size());
                 for (size_t i = 0; i < right_joint_angles.size(); ++i) {
@@ -100,27 +100,14 @@ protected:
                 }
                 right_robot_state_->arm_state().set_all_references(right_joint_states);
 
-                // Update right gripper (for gui, torque control)
-                double right_gripper_tor = receiver_->get_right_gripper_torque();
-                std::vector<JointState> right_gripper_states(1);
-                right_gripper_states[0].position = 0;
-                right_gripper_states[0].velocity = 0.0;
-                right_gripper_states[0].effort = right_gripper_tor;
-                right_robot_state_->hand_state().set_all_references(right_gripper_states);
+                // // Update right gripper (for gui, torque control)
+                // double right_gripper_tor = receiver_->get_right_gripper_torque();
+                // std::vector<JointState> right_gripper_states(1);
+                // right_gripper_states[0].position = 0;
+                // right_gripper_states[0].velocity = 0.0;
+                // right_gripper_states[0].effort = right_gripper_tor;
+                // right_robot_state_->hand_state().set_all_references(right_gripper_states);
             }
-
-            // // Print status every 500 updates (~1 second at 500Hz)
-            // if (++update_count_ % 500 == 0) {
-            //     std::cout << "[UdpReceiverThread] Updates: " << update_count_
-            //               << " | Timestamp: " << receiver_->get_timestamp();
-            //     if (left_robot_state_) {
-            //         std::cout << " | Left Gripper Torque: " << receiver_->get_left_gripper_torque();
-            //     }
-            //     if (right_robot_state_) {
-            //         std::cout << " | Right Gripper Torque: " << receiver_->get_right_gripper_torque();
-            //     }
-            //     std::cout << std::endl;
-            // }
         }
 
         // Set gripper states (for Manus, position control)
@@ -380,7 +367,6 @@ int main(int argc, char** argv) {
 
         // Insure initial position is received and static before starting control
         std::cout << "\n[INFO] Start initialize home position, please don't move arms in 6 secs........" << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(3));
 
         // Initialize home position
         std::cout << "\n[INFO] Moving to home position..." << std::endl;

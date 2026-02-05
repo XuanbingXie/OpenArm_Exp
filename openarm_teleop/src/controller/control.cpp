@@ -172,7 +172,6 @@ bool Control::unilateral_step() {
         //     }
         // }
         
-        
         // Joint → Motor
         std::vector<MotorState> arm_motor_refs =
         openarmjointconverter_->joint_to_motor(joint_arm_states_ref);
@@ -211,9 +210,9 @@ bool Control::unilateral_step() {
         if (debug) {
             static int count = 0;
             ++count;
-            // if (count % 10 == 0) {
-            write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
-            // }
+            if (count % 10 == 0) {
+                write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
+            }
             if (count % 500 == 0) {
                 if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
                 else std::cout << "[Follower Right Arm] " << std::endl;
@@ -226,10 +225,6 @@ bool Control::unilateral_step() {
                 for (const auto& motor : arm_motor_states) {
                     std::cout << std::fixed << std::setprecision(2) << motor.position << " ";
                 }
-                // std::cout << std::endl;
-                // std::cout << "[Follower] Effort: " << joint_arm_states_ref[0].effort << ", "
-                // << joint_arm_states_ref[1].effort << ", "
-                // << joint_arm_states_ref[2].effort << std::endl;
             }
         }
 

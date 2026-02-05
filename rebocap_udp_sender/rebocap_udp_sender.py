@@ -9,7 +9,6 @@ import time
 import threading
 import numpy as np
 import socket
-import json
 import sys
 import signal
 from scipy.spatial.transform import Rotation as R
@@ -31,9 +30,9 @@ class ReboCapUdpSender:
         self.debug = True
         self.print_interval = 60
 
-        # Send thread parameters
-        self.send_freq = 500  # Hz
-        self.dt = 1.0 / self.send_freq
+        # Send frequency
+        self.send_freq = 200  
+        self.interval = 1.0 / self.send_freq
 
         # Pose storage for interpolation
         self.last_pose = None
@@ -70,11 +69,6 @@ class ReboCapUdpSender:
         self.gripper_controller = GripperController()
         # self.gripper_controller.start_gui()
 
-        # Start send thread
-        self.send_thread = threading.Thread(target=self.send_loop)
-        self.send_thread.daemon = True
-        self.send_thread.start()
-
         # Setup signal handler
         signal.signal(signal.SIGINT, self.signal_handler)
 
@@ -86,36 +80,46 @@ class ReboCapUdpSender:
     
     def on_pose_data(self, sdk, tran, pose24, static_index, ts):
         """Callback when new pose data is received from RoboCap"""
-        try:
-            with self.pose_lock:
-                now = time.time()
-                self.last_pose = self.cur_pose
-                self.last_timestamp = self.cur_timestamp
-                self.cur_pose = deepcopy(pose24)  # Deep copy
-                self.cur_timestamp = now
-        except Exception as e:
-            print(f"❌ Error in pose callback: {e}")
+        with self.pose_lock:
+            now = time.time()
+            self.last_pose = self.cur_pose
+            self.last_timestamp = self.cur_timestamp
+            self.cur_pose = deepcopy(pose24)  # Deep copy
+            self.cur_timestamp = now
     
     def send_udp(self, timestamp, joint_angles):
-        """Send data via UDP as JSON"""
-        # Sorry for this, not coincide with this funciton
+        # Pack and send raw float32 data (timestamp, 14 joints, left_grip, right_grip)
         left_torque, right_torque = self.gripper_controller.get_torques()
 
-        data = {
-            'timestamp': timestamp,
-            'left_joints': joint_angles[:7],
-            'right_joints': joint_angles[7:],
-            'left_gripper': left_torque,
-            'right_gripper': right_torque,
-        }
+        # Ensure joint_angles length is 14
+        ja = np.asarray(joint_angles, dtype=np.float32)
+        if ja.size < 14:
+            # pad with zeros if unexpectedly short
+            padded = np.zeros(14, dtype=np.float32)
+            padded[:ja.size] = ja
+            ja = padded
+        elif ja.size > 14:
+            ja = ja[:14]
 
-        # Convert to JSON and send
-        json_data = json.dumps(data)
-        self.sock.sendto(json_data.encode('utf-8'), (self.udp_host, self.udp_port))
+        pkt = np.empty(1 + 14 + 2, dtype=np.float32)
+        pkt[0] = np.float32(timestamp)
+        pkt[1:15] = ja
+        pkt[15] = np.float32(left_torque)
+        pkt[16] = np.float32(right_torque)
+
+        try:
+            self.sock.sendto(pkt.tobytes(), (self.udp_host, self.udp_port))
+        except Exception as e:
+            if self.debug:
+                print(f"UDP send failed: {e}")
 
     def send_loop(self):
         """Send loop running at high frequency with interpolation"""
+        next_time = time.perf_counter() + self.interval
         while self.running:
+            while time.perf_counter() < next_time:
+                pass
+            
             now = time.time()
             with self.pose_lock:
                 cur_pose = self.cur_pose
@@ -131,8 +135,7 @@ class ReboCapUdpSender:
                     interp_pose = self.interpolate_pose(last_pose, cur_pose, alpha)
                     joint_angles = self.map_to_openarm_joints_interp(interp_pose)
                     self.send_udp(now, joint_angles)
-
-            time.sleep(self.dt)
+            next_time += self.interval
 
     def interpolate_pose(self, pose1, pose2, alpha):
         """Interpolate between two poses using SLERP for quaternions"""
@@ -251,13 +254,6 @@ class ReboCapUdpSender:
 
     def cleanup(self):
         self.running = False
-        try:
-            if self.send_thread.is_alive():
-                self.send_thread.join(timeout=1.0)
-            print("Send thread stopped")
-        except:
-            pass
-
         try:
             self.gripper_controller.stop_gui()
             print("Gripper controller GUI stopped")

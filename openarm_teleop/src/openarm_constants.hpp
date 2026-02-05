@@ -39,15 +39,12 @@ constexpr double PI = 3.14159265358979323846;
 
 #define TANHFRIC true
 
-#define UPD_RECEIVER_FREQUENCY 300.0
+#define UPD_RECEIVER_FREQUENCY 200.0
 #define FOLLOW_FREQUENCY 1000.0
 #define FREQUENCY 1000.0
 #define CUTOFF_FREQUENCY 90.0
 
 #define ELBOWLIMIT 0.0
-
-// static const double L_INITIAL_POSITION[NMOTORS] = {0.0, 0.0, 0.0, 0.0, -PI / 2.0, 0.0, 0.0, 0.0};
-// static const double R_INITIAL_POSITION[NMOTORS] = {0.0, 0.0, 0.0, 0.0, PI / 2.0, 0.0, 0.0, 0.0};
 
 // safety limit position
 static const double position_limit_max_L[] = {(2.0 / 3.0) * PI, PI,       PI / 2.0, PI,

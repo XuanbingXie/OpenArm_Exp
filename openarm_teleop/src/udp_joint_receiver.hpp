@@ -29,14 +29,17 @@
 #include <thread>
 #include <vector>
 
-#include <nlohmann/json.hpp>
+// Packet layout (float32): [timestamp, 14 joints, left_gripper, right_gripper]
+#pragma pack(push, 1)
+struct UdpFloatPacket {
+    float timestamp;
+    float joints[14];
+    float left_gripper;
+    float right_gripper;
+};
+#pragma pack(pop)
 
-using json = nlohmann::json;
-
-/**
- * UDP receiver for joint angles from RoboCap
- * Receives JSON data containing joint angles and gripper position
- */
+// UDP receiver for joint angles from RoboCap
 class UdpJointReceiver {
 public:
     UdpJointReceiver(int port = 5678, size_t num_joints = 7)
@@ -51,7 +54,6 @@ public:
           right_gripper_torque_(0.0) {
         left_joint_angles_.resize(num_joints_, 0.0);
         right_joint_angles_.resize(num_joints_, 0.0);
-        pelvis_position_.resize(3, 0.0);
 
         // Create UDP socket
         socket_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
@@ -150,12 +152,12 @@ public:
             auto elapsed =
                 std::chrono::duration_cast<std::chrono::seconds>(now - start).count();
             if (elapsed >= timeout_seconds) {
-                std::cerr << "[UdpJointReceiver] ⚠️  Timeout waiting for UDP data" << std::endl;
+                std::cerr << "[UdpJointReceiver] Timeout waiting for UDP data" << std::endl;
                 return false;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        std::cout << "[UdpJointReceiver] ✅ UDP data received!" << std::endl;
+        std::cout << "[UdpJointReceiver] UDP data received!" << std::endl;
         return true;
     }
 
@@ -197,63 +199,31 @@ private:
     }
 
     void process_data(const char* data, size_t length) {
-        try {
-            // Debug: print raw data
+        const size_t expected_bytes = sizeof(UdpFloatPacket);
+        if (length < expected_bytes) {
             if (sequence_number_ < 3) {
-                std::cout << "[UdpJointReceiver] Raw data (" << length << " bytes): "
-                          << std::string(data, std::min(length, size_t(100))) << "..." << std::endl;
+                std::cerr << "[UdpJointReceiver] Warning: packet too small (" << length
+                          << " bytes), expected " << expected_bytes << " bytes" << std::endl;
             }
-
-            // Parse JSON
-            json j = json::parse(std::string(data, length));
-
-            std::lock_guard<std::mutex> lock(data_mutex_);
-
-            // Extract left joint angles
-            if (j.contains("left_joints")) {
-                std::vector<double> left_joints_array = j["left_joints"].get<std::vector<double>>();
-                if (left_joints_array.size() == num_joints_) {
-                    left_joint_angles_ = left_joints_array;
-                } else {
-                    std::cerr << "[UdpJointReceiver] Warning: Expected " << num_joints_
-                              << " left joints, got " << left_joints_array.size() << std::endl;
-                }
-            }
-
-            // Extract right joint angles
-            if (j.contains("right_joints")) {
-                std::vector<double> right_joints_array = j["right_joints"].get<std::vector<double>>();
-                if (right_joints_array.size() == num_joints_) {
-                    right_joint_angles_ = right_joints_array;
-                } else {
-                    std::cerr << "[UdpJointReceiver] Warning: Expected " << num_joints_
-                              << " right joints, got " << right_joints_array.size() << std::endl;
-                }
-            }
-
-            // Extract left gripper torque
-            if (j.contains("left_gripper")) {
-                left_gripper_torque_ = j["left_gripper"].get<double>();
-            }
-
-            // Extract right gripper torque
-            if (j.contains("right_gripper")) {
-                right_gripper_torque_ = j["right_gripper"].get<double>();
-            }
-
-            // Extract timestamp
-            if (j.contains("timestamp")) {
-                timestamp_ = j["timestamp"].get<double>();
-            }
-
-            // Update sequence and mark data as ready
-            sequence_number_++;
-            data_ready_ = true;
-
-        } catch (const std::exception& e) {
-            std::cerr << "[UdpJointReceiver] Parse error: " << e.what() << std::endl;
-            std::cerr << "[UdpJointReceiver] Data: " << std::string(data, std::min(length, size_t(200))) << std::endl;
+            return;
         }
+
+        UdpFloatPacket pkt;
+        std::memcpy(&pkt, data, expected_bytes);
+
+        std::lock_guard<std::mutex> lock(data_mutex_);
+
+        for (size_t i = 0; i < num_joints_; ++i) {
+            left_joint_angles_[i] = static_cast<double>(pkt.joints[i]);
+            right_joint_angles_[i] = static_cast<double>(pkt.joints[num_joints_ + i]);
+        }
+
+        left_gripper_torque_ = static_cast<double>(pkt.left_gripper);
+        right_gripper_torque_ = static_cast<double>(pkt.right_gripper);
+        timestamp_ = static_cast<double>(pkt.timestamp);
+
+        sequence_number_++;
+        data_ready_ = true;
     }
 
     int port_;
@@ -272,5 +242,4 @@ private:
     std::vector<double> right_joint_angles_;
     double left_gripper_torque_;
     double right_gripper_torque_;
-    std::vector<double> pelvis_position_;
 };

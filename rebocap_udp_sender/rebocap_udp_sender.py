@@ -139,9 +139,11 @@ class ReboCapUdpSender:
                     interp_pose = self.interpolate_pose(last_pose, cur_pose, alpha)
                     joint_angles = self.map_to_openarm_joints_interp(interp_pose)
                     self.send_udp(now, joint_angles)
+                    
                     # Record pre and post interpolation joints for debug
-                    pre_joints = self.map_to_openarm_joints_interp(cur_pose)
-                    self.writer.record(now, pre_joints, joint_angles)
+                    if self.debug:
+                        pre_joints = self.map_to_openarm_joints_no_incre_solver(cur_pose)
+                        self.writer.record(now, pre_joints, joint_angles)
             next_time += self.interval
 
     def interpolate_pose(self, pose1, pose2, alpha):
@@ -249,11 +251,81 @@ class ReboCapUdpSender:
         
         return joints
 
+    def map_to_openarm_joints_no_incre_solver(self, pose24):
+        """
+        Map interpolated RoboCap quaternions to OpenArm 7-DOF joint angles
+        Same as map_to_openarm_joints but for interpolated pose
+        """
+        ## left
+        left_collar = pose24[-11]
+        left_shoulder = pose24[-8]
+        left_elbow = pose24[-6]
+        left_wrist = pose24[-4]
+
+        ## right
+        right_collar = pose24[-10]
+        right_shoulder = pose24[-7]
+        right_elbow = pose24[-5]
+        right_wrist = pose24[-3]
+
+        ## Fuse collar rotation and shoulder rotation
+        left_shoulder = (R.from_quat(left_collar) * R.from_quat(left_shoulder)).as_quat()
+        right_shoulder = (R.from_quat(right_collar) * R.from_quat(right_shoulder)).as_quat()
+
+
+        ## ----------------For left arm--------------------
+        # Euler angle decomposition
+        l_shoulder = R.from_quat(left_shoulder, scalar_first=False)
+        l_j1, l_j2, l_j3 = l_shoulder.as_euler('XYX')
+        l_j2 -= np.pi / 2.0  # Adjust for OpenArm's
+
+        # Just use Euler angles for elbow and wrist
+        l_elbow = R.from_quat(left_elbow, scalar_first=False)
+        z, _, x = l_elbow.as_euler('ZYX')
+        l_j4 = -z
+        l_j5 = x
+        l_wrist = R.from_quat(left_wrist, scalar_first=False)
+        z, y, _ = l_wrist.as_euler('ZYX')
+        l_j6 = -y
+        l_j7 = z
+
+        ## ----------------For right arm--------------------
+        # Euler angle decomposition
+        r_shoulder = R.from_quat(right_shoulder, scalar_first=False)
+        r_j1, r_j2, r_j3 = r_shoulder.as_euler('XYX')
+        if r_j1 > 0:
+            r_j1 -= np.pi
+        else:
+            r_j1 += np.pi
+        r_j1 = -r_j1
+        r_j2 -= np.pi / 2.0
+        r_j2 = -r_j2
+        if r_j3 > 0:
+            r_j3 -= np.pi
+        else:
+            r_j3 += np.pi
+        r_j3 = -r_j3
+
+        ## Elbow and wrist (for right arm)
+        r_elbow = R.from_quat(right_elbow, scalar_first=False)
+        z, _, x = r_elbow.as_euler('ZYX')
+        r_j4 = z
+        r_j5 = -x - (np.pi/4)
+        r_wrist = R.from_quat(right_wrist, scalar_first=False)
+        z, y, _ = r_wrist.as_euler('ZYX')
+        r_j6 = -z
+        r_j7 = -y
+
+        joints = [l_j1, l_j2, l_j3, l_j4, l_j5, l_j6, l_j7,
+                  r_j1, r_j2, r_j3, r_j4, r_j5, r_j6, r_j7]
+        joints = np.clip(joints, LEFT_JOINTS_MIN_VALUE+RIGHT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE+RIGHT_JOINTS_MAX_VALUE).tolist()
+
+        return joints
     
     def run(self):
         try:
             while self.running:
-                time.sleep(0.1)
+                self.send_loop()
         except KeyboardInterrupt:
             pass
         finally:
@@ -306,7 +378,7 @@ def main():
         )
         sender.run()
     except Exception as e:
-        print(f"\n❌ Fatal error: {e}")
+        print(f"\n Fatal error: {e}")
         return 1
     
     return 0

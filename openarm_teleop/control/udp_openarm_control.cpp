@@ -231,6 +231,7 @@ int main(int argc, char** argv) {
         std::string arm_mode = "dual";
         std::string can_interface1 = "can1";
         std::string can_interface2 = "can0";
+        std::string listen_ip = "192.168.0.13";
         int udp_port = 5678;
 
         if (argc < 2) {
@@ -322,9 +323,9 @@ int main(int argc, char** argv) {
         }
 
         // Initialize UDP receiver
-        std::cout << "\n[INFO] Starting UDP receiver on port " << udp_port << "..." << std::endl;
+        std::cout << "\n[INFO] Starting UDP receive on ip " << listen_ip << " on port " << udp_port << "..." << std::endl;
         std::cout << "[INFO] Make sure joint data sender is running!" << std::endl;
-        UdpJointReceiver udp_receiver(udp_port, 7);  // 7 joints for OpenArm
+        UdpJointReceiver udp_receiver(udp_port, 7, listen_ip);  // 7 joints for OpenArm
 
         // Initialize OpenArm hardware
         openarm::can::socket::OpenArm* left_openarm = nullptr;

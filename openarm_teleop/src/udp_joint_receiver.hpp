@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <thread>
 #include <vector>
+#include <string>
 
 // Packet layout (float32): [timestamp, 14 joints, left_gripper, right_gripper]
 #pragma pack(push, 1)
@@ -42,15 +43,15 @@ struct UdpFloatPacket {
 // UDP receiver for joint angles from RoboCap
 class UdpJointReceiver {
 public:
-    UdpJointReceiver(int port = 5678, size_t num_joints = 7)
-        : port_(port),
-          num_joints_(num_joints),
-          socket_fd_(-1),
-          running_(false),
-          sequence_number_(0),
-          timestamp_(0.0),
-          left_gripper_torque_(0.0),
-          right_gripper_torque_(0.0) {
+        UdpJointReceiver(int port = 5678, size_t num_joints = 7, const std::string &listen_ip = "0.0.0.0")
+                : port_(port),
+                    num_joints_(num_joints),
+                    socket_fd_(-1),
+                    running_(false),
+                    sequence_number_(0),
+                    timestamp_(0.0),
+                    left_gripper_torque_(0.0),
+                    right_gripper_torque_(0.0) {
         left_joint_angles_.resize(num_joints_, 0.0);
         right_joint_angles_.resize(num_joints_, 0.0);
 
@@ -69,16 +70,30 @@ public:
         //     throw std::runtime_error("Failed to set SO_REUSEPORT");
         // }
 
-        // Bind to port
+        // Bind to port (optionally to a specific listen IP)
         struct sockaddr_in server_addr;
         std::memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
-        server_addr.sin_addr.s_addr = INADDR_ANY;
         server_addr.sin_port = htons(port_);
+
+        if (listen_ip.empty() || listen_ip == "0.0.0.0") {
+            server_addr.sin_addr.s_addr = INADDR_ANY;
+        } else {
+            int p = inet_pton(AF_INET, listen_ip.c_str(), &server_addr.sin_addr);
+            if (p == 1) {
+                // parsed ok
+            } else if (p == 0) {
+                close(socket_fd_);
+                throw std::runtime_error(std::string("Invalid listen IP address: ") + listen_ip);
+            } else {
+                close(socket_fd_);
+                throw std::runtime_error(std::string("inet_pton error for address: ") + listen_ip + ": " + std::strerror(errno));
+            }
+        }
 
         if (bind(socket_fd_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
             close(socket_fd_);
-            throw std::runtime_error("Failed to bind UDP socket to port " + std::to_string(port_));
+            throw std::runtime_error(std::string("Failed to bind UDP socket to ") + listen_ip + ":" + std::to_string(port_));
         }
     }
 

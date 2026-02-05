@@ -292,8 +292,6 @@ bool Control::AdjustPosition(void) {
         joint_hand_goal[i].effort = 0.0;
     }
 
-    // std::vector<double> kp_arm_temp = {50, 50.0, 50.0, 50.0, 10.0, 10.0, 10.0};
-    // std::vector<double> kp_arm_temp = {20.0, 30.0, 20.0, 20.0, 5.0, 5.0, 5.0, 3.0};
     std::vector<double> kp_arm_temp;
     for (size_t i = 0; i < NMOTORS - 1; ++i) {
         kp_arm_temp.push_back(soft_kp_[i]);

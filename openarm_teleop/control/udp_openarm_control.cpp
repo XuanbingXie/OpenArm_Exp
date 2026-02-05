@@ -49,8 +49,8 @@ public:
     UdpReceiverThread(std::shared_ptr<RobotSystemState> left_robot_state,
                       std::shared_ptr<RobotSystemState> right_robot_state,
                       UdpJointReceiver* receiver,
-                      double hz = 100.0)
-        : PeriodicTimerThread(hz), left_robot_state_(left_robot_state), right_robot_state_(right_robot_state),
+                      double hz = 100.0, bool need_sleep = false)
+        : PeriodicTimerThread(hz, need_sleep), left_robot_state_(left_robot_state), right_robot_state_(right_robot_state),
           receiver_(receiver), update_count_(0), hz_(hz) {}
 
 protected:
@@ -199,8 +199,8 @@ private:
 class FollowerArmThread : public PeriodicTimerThread {
 public:
     FollowerArmThread(std::shared_ptr<RobotSystemState> robot_state, Control* control_f,
-                      double hz = 1000.0)
-        : PeriodicTimerThread(hz), robot_state_(robot_state), control_f_(control_f), hz_(hz) {}
+                      double hz = 1000.0, bool need_sleep=true)
+        : PeriodicTimerThread(hz, need_sleep), robot_state_(robot_state), control_f_(control_f), hz_(hz) {}
 
 protected:
     void before_start() override {
@@ -402,7 +402,8 @@ int main(int argc, char** argv) {
         std::cout << "[INFO] Control loaded" << std::endl;
 
 
-        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY);
+        // Set need sleep to false, hz is not useful
+        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, false);
         udp_thread.start_thread();
         std::cout << "[INFO] UDP receiver loaded" << std::endl;
         std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;
@@ -426,11 +427,11 @@ int main(int argc, char** argv) {
         FollowerArmThread* left_follower_thread = nullptr;
         FollowerArmThread* right_follower_thread = nullptr;
         if (left_control) {
-            left_follower_thread = new FollowerArmThread(left_robot_state, left_control, FOLLOW_FREQUENCY);
+            left_follower_thread = new FollowerArmThread(left_robot_state, left_control, FOLLOW_FREQUENCY, true);
             left_follower_thread->start_thread();
         }
         if (right_control) {
-            right_follower_thread = new FollowerArmThread(right_robot_state, right_control, FOLLOW_FREQUENCY);
+            right_follower_thread = new FollowerArmThread(right_robot_state, right_control, FOLLOW_FREQUENCY, true);
             right_follower_thread->start_thread();
         }
 

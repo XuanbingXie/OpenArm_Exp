@@ -25,7 +25,7 @@
 
 class PeriodicTimerThread {
 public:
-    explicit PeriodicTimerThread(double hz = 1000.0) : is_running_(false) {
+    explicit PeriodicTimerThread(double hz = 1000.0, bool need_sleep=true) : need_sleep_(need_sleep), is_running_(false) {
         if (hz <= 0.0) {
             throw std::invalid_argument("Hz must be positive");
         }
@@ -102,21 +102,24 @@ private:
                 std::cerr << "[ERROR] Exception in on_timer(): " << e.what() << std::endl;
             }
 
-            auto end = std::chrono::steady_clock::now();
-            last_elapsed_us_.store(
-                std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+            if (need_sleep_) {
+                auto end = std::chrono::steady_clock::now();
+                last_elapsed_us_.store(
+                    std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 
-            int period_us = period_us_.load();
-            next_time.tv_nsec += period_us * 1000;
-            while (next_time.tv_nsec >= 1000000000) {
-                next_time.tv_nsec -= 1000000000;
-                next_time.tv_sec += 1;
+                int period_us = period_us_.load();
+                next_time.tv_nsec += period_us * 1000;
+                while (next_time.tv_nsec >= 1000000000) {
+                    next_time.tv_nsec -= 1000000000;
+                    next_time.tv_sec += 1;
+                }
+                clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_time, nullptr);
             }
-            clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_time, nullptr);
         }
     }
 
     pthread_t thread_{};
+    bool need_sleep_;
     std::atomic<bool> is_running_;
     std::atomic<int> period_us_;
     std::atomic<int64_t> last_elapsed_us_{0};

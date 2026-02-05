@@ -6,3 +6,4 @@ openarm_teleop/build
 openarm_teleop/.cache
 openarm_teleop/*.txt
 openarm_teleop/lib/
+rebocap_udp_sender/*.csv

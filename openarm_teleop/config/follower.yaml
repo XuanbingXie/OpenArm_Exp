@@ -26,7 +26,7 @@
   # -------------------------------------------------------
 
 ## For Debug, contsole print and joint angle logging
-Debug: enabled ## disabled / enabled
+Debug: disabled ## disabled / enabled
 
 ## Stable
 FollowerArmParam:

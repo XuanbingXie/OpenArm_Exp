@@ -210,9 +210,7 @@ bool Control::unilateral_step() {
         if (debug) {
             static int count = 0;
             ++count;
-            if (count % 10 == 0) {
-                write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
-            }
+            write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
             if (count % 500 == 0) {
                 if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
                 else std::cout << "[Follower Right Arm] " << std::endl;

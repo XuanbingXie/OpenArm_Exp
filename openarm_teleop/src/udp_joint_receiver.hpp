@@ -90,7 +90,6 @@ public:
     }
 
     bool get_joints_angles(std::vector<double>& l_joints, std::vector<double>& r_joints) {
-        char buffer[65535];
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
         ssize_t recv_len = recvfrom(socket_fd_, buffer, sizeof(buffer) - 1, 0,
@@ -115,8 +114,6 @@ public:
             l_joints = left_joint_angles_;
             r_joints = right_joint_angles_;
             return true;
-        } else if (recv_len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-            std::cerr << "[UdpJointReceiver] recvfrom error: " << strerror(errno) << std::endl;
         }
         return false;
     }
@@ -172,6 +169,7 @@ private:
     std::atomic<bool> running_;
 
     // Protected data
+    char buffer[65535];
     uint64_t sequence_number_;
     double timestamp_;
     std::vector<double> left_joint_angles_;

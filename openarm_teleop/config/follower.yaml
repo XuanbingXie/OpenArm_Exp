@@ -87,4 +87,4 @@ FollowerArmParam:
 # UDP Receiver Filter Parameters
 UdpReceiverFilter:
   # 1.0 = no filtering, 0.0 = maximum filtering
-  FilterAlphas: [0.9, 0.9, 1.0, 1.0, 0.1, 0.8, 0.8]
+  FilterAlphas: [0.9, 0.9, 1.0, 1.0, 0.8, 0.1, 0.1]

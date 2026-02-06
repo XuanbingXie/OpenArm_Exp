@@ -64,17 +64,17 @@ protected:
     }
 
     void on_timer() override {
-        // Timing: measure on_timer frequency
-        auto now_tp = std::chrono::steady_clock::now();
-        if (on_timer_count_ > 0) {
-            auto dt = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_on_timer_time_).count();
-            on_timer_last_period_us_ = static_cast<uint64_t>(dt);
-            on_timer_total_period_us_ += on_timer_last_period_us_;
-            if (on_timer_last_period_us_ < on_timer_min_period_us_) on_timer_min_period_us_ = on_timer_last_period_us_;
-            if (on_timer_last_period_us_ > on_timer_max_period_us_) on_timer_max_period_us_ = on_timer_last_period_us_;
-        }
-        last_on_timer_time_ = now_tp;
-        ++on_timer_count_;
+        // // Timing: measure on_timer frequency
+        // auto now_tp = std::chrono::steady_clock::now();
+        // if (on_timer_count_ > 0) {
+        //     auto dt = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_on_timer_time_).count();
+        //     on_timer_last_period_us_ = static_cast<uint64_t>(dt);
+        //     on_timer_total_period_us_ += on_timer_last_period_us_;
+        //     if (on_timer_last_period_us_ < on_timer_min_period_us_) on_timer_min_period_us_ = on_timer_last_period_us_;
+        //     if (on_timer_last_period_us_ > on_timer_max_period_us_) on_timer_max_period_us_ = on_timer_last_period_us_;
+        // }
+        // last_on_timer_time_ = now_tp;
+        // ++on_timer_count_;
 
         std::vector<double> left_joint_angles;
         std::vector<double> right_joint_angles;
@@ -156,23 +156,23 @@ protected:
         //     right_robot_state_->arm_state().set_all_references(debug_right_joint_angles);
         // }
 
-        // Print frequency statistics every 1 second
-        if (on_timer_count_ == 1) {
-            last_print_time_ = now_tp;
-            last_print_on_timer_count_ = on_timer_count_;
-        } else {
-            auto elapsed_us_since_print = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_print_time_).count();
-            if (elapsed_us_since_print >= 1000000) {
-                uint64_t delta_count = on_timer_count_ - last_print_on_timer_count_;
-                double elapsed_s = static_cast<double>(elapsed_us_since_print) / 1e6;
-                double freq = elapsed_s > 0.0 ? (static_cast<double>(delta_count) / elapsed_s) : 0.0;
-                std::cout << "[UdpReceiverThread] on_timer freq: " << freq << " Hz"
-                          << " (last_period_us=" << on_timer_last_period_us_ << ", min=" << on_timer_min_period_us_
-                          << "us, max=" << on_timer_max_period_us_ << "us)" << std::endl;
-                last_print_time_ = now_tp;
-                last_print_on_timer_count_ = on_timer_count_;
-            }
-        }
+        // // Print frequency statistics every 1 second
+        // if (on_timer_count_ == 1) {
+        //     last_print_time_ = now_tp;
+        //     last_print_on_timer_count_ = on_timer_count_;
+        // } else {
+        //     auto elapsed_us_since_print = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_print_time_).count();
+        //     if (elapsed_us_since_print >= 1000000) {
+        //         uint64_t delta_count = on_timer_count_ - last_print_on_timer_count_;
+        //         double elapsed_s = static_cast<double>(elapsed_us_since_print) / 1e6;
+        //         double freq = elapsed_s > 0.0 ? (static_cast<double>(delta_count) / elapsed_s) : 0.0;
+        //         std::cout << "[UdpReceiverThread] on_timer freq: " << freq << " Hz"
+        //                   << " (last_period_us=" << on_timer_last_period_us_ << ", min=" << on_timer_min_period_us_
+        //                   << "us, max=" << on_timer_max_period_us_ << "us)" << std::endl;
+        //         last_print_time_ = now_tp;
+        //         last_print_on_timer_count_ = on_timer_count_;
+        //     }
+        // }
 
     }
 

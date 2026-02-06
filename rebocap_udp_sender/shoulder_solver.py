@@ -82,7 +82,8 @@ class IncrementalShoulderSolver:
         # 阻尼最小二乘法
         # Delta_Theta = J^T * inv(J*J^T + lambda^2 * I) * omega
         jj_t = J @ J.T + self.damp
-        delta_theta = J.T @ np.linalg.solve(jj_t, omega)
+        # delta_theta = J.T @ np.linalg.solve(jj_t, omega)
+        delta_theta = self.fast_solve_3x3_damped(J, omega, self.damp)
 
         cur_time = time.perf_counter()
         cur_interval = cur_time - start_time
@@ -106,6 +107,37 @@ class IncrementalShoulderSolver:
         )
         
         return self.current_joints.tolist()
+    
+    def fast_solve_3x3_damped(J, omega, damp_val_sq):
+        """
+        手动求解 J.T @ inv(J@J.T + damp*I) @ omega
+        """
+        # 1. 计算 A = J @ J.T + damp*I
+        # 展开计算 A (3x3 对称矩阵)
+        A = J @ J.T
+        A[0, 0] += damp_val_sq
+        A[1, 1] += damp_val_sq
+        A[2, 2] += damp_val_sq
+        
+        # 2. 手动计算 3x3 矩阵 A 的行列式 (Determinant)
+        # A = [[a, b, c], [d, e, f], [g, h, i]]
+        a, b, c = A[0,0], A[0,1], A[0,2]
+        d, e, f = A[1,0], A[1,1], A[1,2]
+        g, h, i = A[2,0], A[2,1], A[2,2]
+        
+        det = a*(e*i - f*h) - b*(d*i - f*g) + c*(d*h - e*g)
+        
+        # 3. 计算伴随矩阵并直接求 inv(A) @ omega
+        # 这样可以跳过完整的求逆过程，直接得到中间向量 x
+        inv_det = 1.0 / (det + 1e-9) # 防止除零
+        
+        x = np.zeros(3)
+        x[0] = ((e*i - f*h)*omega[0] + (c*h - b*i)*omega[1] + (b*f - c*e)*omega[2]) * inv_det
+        x[1] = ((f*g - d*i)*omega[0] + (a*i - c*g)*omega[1] + (c*d - a*f)*omega[2]) * inv_det
+        x[2] = ((d*h - e*g)*omega[0] + (g*b - a*h)*omega[1] + (a*e - b*d)*omega[2]) * inv_det
+        
+        # 4. 最后左乘 J.T
+        return J.T @ x
     
     def init_joints(self, joints):
         self.current_joints = np.array(joints, dtype=float)

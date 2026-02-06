@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+import math
 
 class IncrementalShoulderSolver:
     def __init__(self, arm_type='left', 
@@ -14,16 +15,14 @@ class IncrementalShoulderSolver:
         self.joints_min_value = np.array(joints_min_value, dtype=float)
         self.joints_max_value = np.array(joints_max_value, dtype=float)
         self.lam = damping
+        self.damp = self.lam**2 * np.eye(3)
         self.alpha = step_size
         
         if self.arm_type == 'left':
-            self.jacobian_signs = np.array([[1, 1, 1],   
-                                            [1, 1, 1], 
-                                            [1, 1, 1]]) 
+            self.js = [1, 1, 1] 
         else:  
-            self.jacobian_signs = np.array([[-1, -1, -1],
-                                            [-1, -1, -1],
-                                            [-1, -1, -1]])
+            self.js = [-1, -1, -1]
+                                            
     def physics_euler_to_euler_with_bias(self, euler_angles):
         if self.arm_type == 'left':
             euler_angles[1] = euler_angles[1] + np.pi/2
@@ -61,22 +60,20 @@ class IncrementalShoulderSolver:
         omega = error_rot.as_rotvec() # 得到 [wx, wy, wz]
         
         # Construct jocabian
-        s1, c1 = np.sin(j1_phys), np.cos(j1_phys)
-        s2, c2 = np.sin(j2_phys), np.cos(j2_phys)
+        s1, c1 = math.sin(j1_phys), math.cos(j1_phys)
+        s2, c2 = math.sin(j2_phys), math.cos(j2_phys)
         
-        J_base = np.array([
-            [1, 0,   c2],
-            [0, c1,  s1*s2],
-            [0, s1, -c1*s2]
+        J = np.array([
+            [1*self.js[0], 0,                 c2*self.js[2]],
+            [0,            c1 * self.js[1],  s1*s2*self.js[2]],
+            [0,            s1 * self.js[1], -c1*s2*self.js[2]]
         ])
         
-        J = J_base * self.jacobian_signs
 
         # 阻尼最小二乘法
         # Delta_Theta = J^T * inv(J*J^T + lambda^2 * I) * omega
-        jj_t = J @ J.T
-        damp = self.lam**2 * np.eye(3)
-        delta_theta = J.T @ np.linalg.solve(jj_t + damp, omega)
+        jj_t = J @ J.T + self.damp
+        delta_theta = J.T @ np.linalg.solve(jj_t, omega)
 
         # Update
         delta_theta = np.clip(delta_theta, -0.1, 0.1) 

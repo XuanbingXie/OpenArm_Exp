@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import math
+import time
 
 class IncrementalShoulderSolver:
     def __init__(self, arm_type='left', 
@@ -17,7 +18,13 @@ class IncrementalShoulderSolver:
         self.lam = damping
         self.damp = self.lam**2 * np.eye(3)
         self.alpha = step_size
-        
+
+        self.min_send_udp_interval = 1.0
+        self.max_send_udp_interval = 0.0
+        self.frequency_udp_start_time = time.perf_counter()
+        self.frequency_send_udp_start_time = time.perf_counter()
+        self.frequency_print_interval = 1  # seconds
+
         if self.arm_type == 'left':
             self.js = [1, 1, 1] 
         else:  
@@ -70,10 +77,22 @@ class IncrementalShoulderSolver:
         ])
         
 
+        start_time = time.perf_counter()
+
         # 阻尼最小二乘法
         # Delta_Theta = J^T * inv(J*J^T + lambda^2 * I) * omega
         jj_t = J @ J.T + self.damp
         delta_theta = J.T @ np.linalg.solve(jj_t, omega)
+
+        cur_time = time.perf_counter()
+        cur_interval = cur_time - start_time
+        self.min_send_udp_interval = min(self.min_send_udp_interval, cur_interval)
+        self.max_send_udp_interval = max(self.max_send_udp_interval, cur_interval)
+        if (cur_time - self.frequency_send_udp_start_time) >= self.frequency_print_interval:
+            print(f"Sender: min_interval: {self.min_send_udp_interval:.4f}s, max_interval: {self.max_send_udp_interval:.4f}s")
+            self.min_send_udp_interval = 1.0
+            self.max_send_udp_interval = 0.0
+            self.frequency_send_udp_start_time = cur_time
 
         # Update
         delta_theta = np.clip(delta_theta, -0.1, 0.1) 

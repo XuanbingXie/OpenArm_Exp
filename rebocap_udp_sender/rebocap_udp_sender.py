@@ -43,8 +43,8 @@ class ReboCapUdpSender:
         self.send_udp_count = 0
         self.min_send_udp_interval = 1.0
         self.max_send_udp_interval = 0.0
-        self.frequency_udp_start_time = time.time()
-        self.frequency_send_udp_start_time = time.time()
+        self.frequency_udp_start_time = time.perf_counter()
+        self.frequency_send_udp_start_time = time.perf_counter()
 
         self.frequency_pose_start_time = time.time()
         self.last_pose_data_time = -1
@@ -196,7 +196,7 @@ class ReboCapUdpSender:
                 duration = cur_ts - last_ts
                 if duration > 0:
 
-                    start_time = time.time()
+                    # start_time = time.perf_counter()
                     now = time.perf_counter()
                     alpha = (now - duration - last_ts) / duration
                     alpha = np.clip(alpha, self.key_times[0], self.key_times[1])
@@ -204,15 +204,15 @@ class ReboCapUdpSender:
                     joint_angles = self.map_to_openarm_joints_interp(interp_pose)
                     self.send_udp(now, joint_angles)
                     
-                    cur_time = time.time()
-                    cur_interval = cur_time - start_time
-                    self.min_send_udp_interval = min(self.min_send_udp_interval, cur_interval)
-                    self.max_send_udp_interval = max(self.max_send_udp_interval, cur_interval)
-                    if (cur_time - self.frequency_send_udp_start_time) >= self.frequency_print_interval:
-                        print(f"Sender: min_interval: {self.min_send_udp_interval:.4f}s, max_interval: {self.max_send_udp_interval:.4f}s")
-                        self.min_send_udp_interval = 1.0
-                        self.max_send_udp_interval = 0.0
-                        self.frequency_send_udp_start_time = cur_time
+                    # cur_time = time.perf_counter()
+                    # cur_interval = cur_time - start_time
+                    # self.min_send_udp_interval = min(self.min_send_udp_interval, cur_interval)
+                    # self.max_send_udp_interval = max(self.max_send_udp_interval, cur_interval)
+                    # if (cur_time - self.frequency_send_udp_start_time) >= self.frequency_print_interval:
+                    #     print(f"Sender: min_interval: {self.min_send_udp_interval:.4f}s, max_interval: {self.max_send_udp_interval:.4f}s")
+                    #     self.min_send_udp_interval = 1.0
+                    #     self.max_send_udp_interval = 0.0
+                    #     self.frequency_send_udp_start_time = cur_time
 
 
                     # Record pre and post interpolation joints for debug

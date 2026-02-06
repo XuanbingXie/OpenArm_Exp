@@ -26,7 +26,7 @@ def main():
 
     # 初始化绘图
     # sharex=True 实现了上下两图 X 轴联动 (缩放/平移同步)
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True, sharey=True)
     plt.subplots_adjust(bottom=0.2) # 留出底部空间用于显示说明
 
     # 状态变量：当前显示的关节索引 (0 代表 Joint 1)

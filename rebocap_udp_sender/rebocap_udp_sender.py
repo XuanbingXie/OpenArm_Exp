@@ -4,19 +4,21 @@ RoboCap UDP Sender
 Reads data from RoboCap SDK and sends joint angles via UDP
 """
 
-from copy import deepcopy
 import time
 import threading
-import numpy as np
-import socket
+import os
+import psutil
+import ctypes
 import sys
 import signal
+import numpy as np
+import socket
 from scipy.spatial.transform import Rotation as R
-from scipy.spatial.transform import Slerp
-from contants import LEFT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE, RIGHT_JOINTS_MIN_VALUE, RIGHT_JOINTS_MAX_VALUE
+
 from shoulder_solver import IncrementalShoulderSolver
 from gripper_controller import GripperController
 from writer import Writer
+from contants import LEFT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE, RIGHT_JOINTS_MIN_VALUE, RIGHT_JOINTS_MAX_VALUE
 import rebocap_ws_sdk
 
 class ReboCapUdpSender:
@@ -48,14 +50,20 @@ class ReboCapUdpSender:
         # Send frequency
         self.send_freq = 200  
         self.interval = 1.0 / self.send_freq
+        # Set process priority 
+        p = psutil.Process(os.getpid())
+        p.nice(psutil.HIGH_PRIORITY_CLASS) # for wins
+        # Set timer resolution to 1ms
+        self.winmm = ctypes.WinDLL('winmm')
+        self.winmm.timeBeginPeriod(1)
 
-        # Pose storage for interpolation
+        # Pose storage for interpolation(debug)
         self.last_pose = None
         self.last_timestamp = None
         self.cur_pose = None
         self.cur_timestamp = None
         self.pose_lock = threading.Lock()
-        self.key_times = [0, 1.5]
+        self.key_times = [0, 1.2]
 
         # Create UDP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -212,20 +220,34 @@ class ReboCapUdpSender:
 
     def interpolate_pose(self, pose1, pose2, alpha):
         """Interpolate between two poses using SLERP for quaternions"""
-        interp_pose = []
+        # interp_pose = []
         # Indices of interest: -11 collar, -8 shoulder, -6 elbow, -4 wrist for left; -10, -7, -5, -3 for right
         indices = [-11, -8, -6, -4, -10, -7, -5, -3]
-        for i in range(-24, 0, 1):
-            if i in indices:
-                key_rots = R.from_quat([pose1[i], pose2[i]], scalar_first=False)
-                slerp = Slerp(self.key_times, key_rots)
-                interp_r = slerp(alpha)
-                interp_q = interp_r.as_quat(scalar_first=False)
-                interp_pose.append(interp_q.tolist())
-            else:
-                # For other joints, linear interpolation or copy
-                interp_pose.append(pose2[i][:])  # Copy pose2 for now
-        return interp_pose
+        ## Slerp(Slow)
+        # for i in range(-24, 0, 1):
+        #     if i in indices:
+        #         key_rots = R.from_quat([pose1[i], pose2[i]], scalar_first=False)
+        #         slerp = Slerp(self.key_times, key_rots)
+        #         interp_r = slerp(alpha)
+        #         interp_q = interp_r.as_quat(scalar_first=False)
+        #         interp_pose.append(interp_q.tolist())
+        #     else:
+        #         # For other joints, linear interpolation or copy
+        #         interp_pose.append(pose2[i][:])  # Copy pose2 for now
+        
+        ## NLERP
+        q1 = np.array([pose1[i] for i in indices])
+        q2 = np.array([pose2[i] for i in indices])
+        dot = np.sum(q1 * q2, axis=1, keepdims=True)
+        q2 = np.where(dot < 0, -q2, q2)
+        interp_q = (1.0 - alpha) * q1 + alpha * q2
+        norms = np.linalg.norm(interp_q, axis=1, keepdims=True)
+        interp_q /= norms
+        new_pose = list(pose2) 
+        for idx, i in enumerate(indices):
+            new_pose[i] = interp_q[idx].tolist()
+        
+        return new_pose
 
     def map_to_openarm_joints_interp(self, pose24):
         """
@@ -415,6 +437,8 @@ class ReboCapUdpSender:
         except:
             pass
 
+        # 恢复计时器精度
+        self.winmm.timeEndPeriod(1)
 
 def main():
     print("=" * 60)

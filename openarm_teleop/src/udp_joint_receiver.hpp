@@ -20,7 +20,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <cstring>
-#include <signal.h>
 
 #include <atomic>
 #include <chrono>
@@ -63,8 +62,8 @@ public:
         }
 
         // Set socket to non-blocking mode
-        int flags = fcntl(socket_fd_, F_GETFL, 0);
-        fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK);
+        // int flags = fcntl(socket_fd_, F_GETFL, 0);
+        // fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK);
 
         // Bind to port (optionally to a specific listen IP)
         struct sockaddr_in server_addr;
@@ -126,9 +125,10 @@ public:
             l_joints = left_joint_angles_;
             r_joints = right_joint_angles_;
             return true;
-        } else {
-            std::cout << "[UdpJointReceiver] No packet received yet!" <<  std::endl;
-        }
+        } 
+        // else {
+        //     std::cout << "[UdpJointReceiver] No packet received yet!" <<  std::endl;
+        // }
         return false;
     }
 

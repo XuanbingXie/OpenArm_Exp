@@ -403,7 +403,7 @@ int main(int argc, char** argv) {
 
 
         // Set need sleep to false, hz is not useful
-        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, true);
+        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, false);
         udp_thread.start_thread();
         std::cout << "[INFO] UDP receiver loaded" << std::endl;
         std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;

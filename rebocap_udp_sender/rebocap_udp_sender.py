@@ -28,14 +28,17 @@ class ReboCapUdpSender:
         self.rebocap_port = rebocap_port
         self.total_updates = 0
         self.running = True
-        self.debug = True
+        self.debug = False
         self.print_interval = 60
         
         # Frequency tracking
         self.on_pose_data_count = 0
         self.send_udp_count = 0
-        self.frequency_pose_start_time = time.time()
-        self.frequency_udp_start_time = time.time()
+        self.frequency_pose_start_time = time.perf_counter()
+        self.last_pose_data_time = -1
+        self.min_pose_data_interval = 1.0
+        self.max_pose_data_interval = 0.0
+        self.frequency_udp_start_time = time.perf_counter()
         self.frequency_print_interval = 1  # seconds
 
         # Send frequency
@@ -91,21 +94,27 @@ class ReboCapUdpSender:
     def on_pose_data(self, sdk, tran, pose24, static_index, ts):
         """Callback when new pose data is received from RoboCap"""
         with self.pose_lock:
-            now = time.time()
             self.last_pose = self.cur_pose
             self.last_timestamp = self.cur_timestamp
             self.cur_pose = pose24  
-            self.cur_timestamp = now
+            self.cur_timestamp = time.perf_counter()
 
         # Frequency tracking for on_pose_data
         self.on_pose_data_count += 1
-        current_time = time.time()
+        current_time = time.perf_counter()
+        if self.last_pose_data_time > 0:
+            interval = current_time - self.last_pose_data_time
+            self.min_pose_data_interval = min(self.min_pose_data_interval, interval)
+            self.max_pose_data_interval = max(self.max_pose_data_interval, interval)
+
         if current_time - self.frequency_pose_start_time >= self.frequency_print_interval:
             on_pose_freq = self.on_pose_data_count / (current_time - self.frequency_pose_start_time)
-            print(f"on_pose_data frequency: {on_pose_freq:.2f} Hz")
+            print(f"on_pose_data frequency: {on_pose_freq:.2f} Hz, min_interval: {self.min_pose_data_interval:.4f}s, max_interval: {self.max_pose_data_interval:.4f}s")
             self.on_pose_data_count = 0
             self.frequency_pose_start_time = current_time
-
+            self.min_pose_data_interval = 1.0
+            self.max_pose_data_interval = 0.0
+        self.last_pose_data_time = current_time
         # if self.debug:
         #     pre_joints = self.map_to_openarm_joints_no_incre_solver(pose24)
         #     self.writer.record(now, pre_joints, pre_joints)
@@ -150,13 +159,13 @@ class ReboCapUdpSender:
         next_time = time.perf_counter() + self.interval
         while self.running:
             if (time.perf_counter() > next_time + self.interval):
-                print("Warning: send loop is lagging behind")
+                print(f"Warning: send loop is lagging behind, lagging time:{time.perf_counter() - next_time:.4f} seconds")
                 next_time = time.perf_counter() + self.interval
 
             remain = next_time - time.perf_counter()
             if remain > 0.01:
                 time.sleep(remain - 0.01)
-            
+
             while time.perf_counter() < next_time:
                 pass
             
@@ -169,7 +178,7 @@ class ReboCapUdpSender:
             if cur_pose is not None and last_pose is not None and cur_ts is not None and last_ts is not None:
                 duration = cur_ts - last_ts
                 if duration > 0:
-                    now = time.time()
+                    now = time.perf_counter()
                     alpha = (now - duration - last_ts) / duration
                     alpha = np.clip(alpha, self.key_times[0], self.key_times[1])
                     interp_pose = self.interpolate_pose(last_pose, cur_pose, alpha)
@@ -181,7 +190,7 @@ class ReboCapUdpSender:
                         pre_joints = self.map_to_openarm_joints_no_incre_solver(cur_pose)
                         self.writer.record(now, pre_joints, joint_angles)
                 else:
-                    print("Warning: Non-positive duration between poses")
+                    print(f"Warning: Non-positive duration between poses, duration is {duration}")
             next_time += self.interval
 
     def interpolate_pose(self, pose1, pose2, alpha):

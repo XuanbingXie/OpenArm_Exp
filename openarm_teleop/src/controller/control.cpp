@@ -226,8 +226,8 @@ bool Control::unilateral_step() {
             }
         }
 
-        openarm_->get_arm().mit_control_all(arm_cmds);
-        openarm_->get_gripper().mit_control_all(hand_cmds);
+        // openarm_->get_arm().mit_control_all(arm_cmds);
+        // openarm_->get_gripper().mit_control_all(hand_cmds);
 
         openarm_->recv_all(200);
 
@@ -339,8 +339,8 @@ bool Control::AdjustPosition(void) {
                 hand_motor_refs[i].velocity, 0.0});
         }
 
-        openarm_->get_arm().mit_control_all(arm_cmds);
-        openarm_->get_gripper().mit_control_all(hand_cmds);
+        // openarm_->get_arm().mit_control_all(arm_cmds);
+        // openarm_->get_gripper().mit_control_all(hand_cmds);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 

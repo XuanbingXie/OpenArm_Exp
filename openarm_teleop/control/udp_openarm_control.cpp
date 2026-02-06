@@ -64,21 +64,10 @@ protected:
     }
 
     void on_timer() override {
-        // // Timing: measure on_timer frequency
-        // auto now_tp = std::chrono::steady_clock::now();
-        // if (on_timer_count_ > 0) {
-        //     auto dt = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_on_timer_time_).count();
-        //     on_timer_last_period_us_ = static_cast<uint64_t>(dt);
-        //     on_timer_total_period_us_ += on_timer_last_period_us_;
-        //     if (on_timer_last_period_us_ < on_timer_min_period_us_) on_timer_min_period_us_ = on_timer_last_period_us_;
-        //     if (on_timer_last_period_us_ > on_timer_max_period_us_) on_timer_max_period_us_ = on_timer_last_period_us_;
-        // }
-        // last_on_timer_time_ = now_tp;
-        // ++on_timer_count_;
-
+        
         std::vector<double> left_joint_angles;
         std::vector<double> right_joint_angles;
-
+        
         // Try to get new joint angles from UDP
         if (receiver_->get_joints_angles(left_joint_angles, right_joint_angles)) {
             // ----------------------Left-------------------------
@@ -91,7 +80,7 @@ protected:
                     left_joint_states[i].effort = 0.0;
                 }
                 left_robot_state_->arm_state().set_all_references(left_joint_states);
-
+                
                 // // Update left gripper (for gui, torque control)
                 // double left_gripper_tor = receiver_->get_left_gripper_torque();
                 // std::vector<JointState> left_gripper_states(1);
@@ -100,7 +89,7 @@ protected:
                 // left_gripper_states[0].effort = left_gripper_tor;
                 // left_robot_state_->hand_state().set_all_references(left_gripper_states);
             }
-
+            
             // ----------------------Right-------------------------
             if (right_robot_state_) {
                 // New data available - convert to JointState and update right robot state
@@ -111,7 +100,7 @@ protected:
                     right_joint_states[i].effort = 0.0;
                 }
                 right_robot_state_->arm_state().set_all_references(right_joint_states);
-
+                
                 // // Update right gripper (for gui, torque control)
                 // double right_gripper_tor = receiver_->get_right_gripper_torque();
                 // std::vector<JointState> right_gripper_states(1);
@@ -121,7 +110,8 @@ protected:
                 // right_robot_state_->hand_state().set_all_references(right_gripper_states);
             }
         }
-
+        
+        
         // Set gripper states (for Manus, position control)
         if (left_robot_state_) {
             std::vector<JointState> left_gripper_states(1);
@@ -130,7 +120,7 @@ protected:
             left_gripper_states[0].effort = 0.0;
             left_robot_state_->hand_state().set_all_references(left_gripper_states);
         }
-
+        
         if (right_robot_state_) {
             std::vector<JointState> right_gripper_states(1);
             right_gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_right);
@@ -138,6 +128,7 @@ protected:
             right_gripper_states[0].effort = 0.0;
             right_robot_state_->hand_state().set_all_references(right_gripper_states);
         }
+
 
         // // For debug
         // if (left_robot_state_) {
@@ -156,24 +147,34 @@ protected:
         //     right_robot_state_->arm_state().set_all_references(debug_right_joint_angles);
         // }
 
-        // // Print frequency statistics every 1 second
-        // if (on_timer_count_ == 1) {
-        //     last_print_time_ = now_tp;
-        //     last_print_on_timer_count_ = on_timer_count_;
-        // } else {
-        //     auto elapsed_us_since_print = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_print_time_).count();
-        //     if (elapsed_us_since_print >= 1000000) {
-        //         uint64_t delta_count = on_timer_count_ - last_print_on_timer_count_;
-        //         double elapsed_s = static_cast<double>(elapsed_us_since_print) / 1e6;
-        //         double freq = elapsed_s > 0.0 ? (static_cast<double>(delta_count) / elapsed_s) : 0.0;
-        //         std::cout << "[UdpReceiverThread] on_timer freq: " << freq << " Hz"
-        //                   << " (last_period_us=" << on_timer_last_period_us_ << ", min=" << on_timer_min_period_us_
-        //                   << "us, max=" << on_timer_max_period_us_ << "us)" << std::endl;
-        //         last_print_time_ = now_tp;
-        //         last_print_on_timer_count_ = on_timer_count_;
-        //     }
-        // }
-
+            
+        ++on_timer_count_;
+        auto now_tp = std::chrono::steady_clock::now();
+        // Print frequency statistics every 1 second
+        if (on_timer_count_ == 1) {
+            last_print_time_ = now_tp;
+            last_print_on_timer_count_ = on_timer_count_;
+        } else {
+            auto dt = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_on_timer_time_).count();
+            on_timer_last_period_us_ = static_cast<uint64_t>(dt);
+            if (on_timer_last_period_us_ < on_timer_min_period_us_) on_timer_min_period_us_ = on_timer_last_period_us_;
+            if (on_timer_last_period_us_ > on_timer_max_period_us_) on_timer_max_period_us_ = on_timer_last_period_us_;
+            
+            auto elapsed_us_since_print = std::chrono::duration_cast<std::chrono::microseconds>(now_tp - last_print_time_).count();
+            if (elapsed_us_since_print >= 1000000) {
+                uint64_t delta_count = on_timer_count_ - last_print_on_timer_count_;
+                double elapsed_s = static_cast<double>(elapsed_us_since_print) / 1e6;
+                double freq = elapsed_s > 0.0 ? (static_cast<double>(delta_count) / elapsed_s) : 0.0;
+                std::cout << "[UdpReceiverThread] on_timer freq: " << freq << " Hz"
+                << " (last_period_us=" << on_timer_last_period_us_ << ", min=" << on_timer_min_period_us_
+                << "us, max=" << on_timer_max_period_us_ << "us)" << std::endl;
+                last_print_time_ = now_tp;
+                last_print_on_timer_count_ = on_timer_count_;
+                on_timer_min_period_us_ = UINT64_MAX;
+                on_timer_max_period_us_ = 0;
+            }
+        }
+        last_on_timer_time_ = now_tp;
     }
 
 private:
@@ -186,7 +187,6 @@ private:
     // on_timer timing statistics (microseconds)
     std::chrono::steady_clock::time_point last_on_timer_time_{};
     uint64_t on_timer_count_{0};
-    uint64_t on_timer_total_period_us_{0};
     uint64_t on_timer_min_period_us_{UINT64_MAX};
     uint64_t on_timer_max_period_us_{0};
     uint64_t on_timer_last_period_us_{0};
@@ -225,8 +225,7 @@ int main(int argc, char** argv) {
     try {
         std::signal(SIGINT, signal_handler);
 
-
-        // Parse command line arguments
+        // Parse command line argument
         std::string urdf_path;
         std::string arm_mode = "dual";
         std::string can_interface1 = "can1";
@@ -404,7 +403,7 @@ int main(int argc, char** argv) {
 
 
         // Set need sleep to false, hz is not useful
-        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, false);
+        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, true);
         udp_thread.start_thread();
         std::cout << "[INFO] UDP receiver loaded" << std::endl;
         std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;

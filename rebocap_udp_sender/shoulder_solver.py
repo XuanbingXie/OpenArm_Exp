@@ -16,7 +16,6 @@ class IncrementalShoulderSolver:
         self.joints_min_value = np.array(joints_min_value, dtype=float)
         self.joints_max_value = np.array(joints_max_value, dtype=float)
         self.lam = damping
-        self.damp = self.lam**2 * np.eye(3)
         self.alpha = step_size
 
         self.min_send_udp_interval = 1.0
@@ -76,24 +75,10 @@ class IncrementalShoulderSolver:
             [0,            s1 * self.js[1], -c1*s2*self.js[2]]
         ])
         
-
-        start_time = time.perf_counter()
-
-        # 阻尼最小二乘法
         # Delta_Theta = J^T * inv(J*J^T + lambda^2 * I) * omega
-        jj_t = J @ J.T + self.damp
+        # jj_t = J @ J.T + self.damp
         # delta_theta = J.T @ np.linalg.solve(jj_t, omega)
-        delta_theta = self.fast_solve_3x3_damped(J, omega, self.damp)
-
-        cur_time = time.perf_counter()
-        cur_interval = cur_time - start_time
-        self.min_send_udp_interval = min(self.min_send_udp_interval, cur_interval)
-        self.max_send_udp_interval = max(self.max_send_udp_interval, cur_interval)
-        if (cur_time - self.frequency_send_udp_start_time) >= self.frequency_print_interval:
-            print(f"Sender: min_interval: {self.min_send_udp_interval:.4f}s, max_interval: {self.max_send_udp_interval:.4f}s")
-            self.min_send_udp_interval = 1.0
-            self.max_send_udp_interval = 0.0
-            self.frequency_send_udp_start_time = cur_time
+        delta_theta = self.fast_solve_3x3_damped(J, omega, self.lam)
 
         # Update
         delta_theta = np.clip(delta_theta, -0.1, 0.1) 
@@ -108,18 +93,10 @@ class IncrementalShoulderSolver:
         
         return self.current_joints.tolist()
     
-    def fast_solve_3x3_damped(J, omega, damp_val_sq):
-        """
-        手动求解 J.T @ inv(J@J.T + damp*I) @ omega
-        """
-        # 1. 计算 A = J @ J.T + damp*I
-        # 展开计算 A (3x3 对称矩阵)
-        A = J @ J.T
-        A[0, 0] += damp_val_sq
-        A[1, 1] += damp_val_sq
-        A[2, 2] += damp_val_sq
+    def fast_solve_3x3_damped(self, J, omega, lam):
+        A = J @ J.T + (lam**2) * np.eye(3)
         
-        # 2. 手动计算 3x3 矩阵 A 的行列式 (Determinant)
+        # Calculate Determinant
         # A = [[a, b, c], [d, e, f], [g, h, i]]
         a, b, c = A[0,0], A[0,1], A[0,2]
         d, e, f = A[1,0], A[1,1], A[1,2]
@@ -127,16 +104,13 @@ class IncrementalShoulderSolver:
         
         det = a*(e*i - f*h) - b*(d*i - f*g) + c*(d*h - e*g)
         
-        # 3. 计算伴随矩阵并直接求 inv(A) @ omega
-        # 这样可以跳过完整的求逆过程，直接得到中间向量 x
-        inv_det = 1.0 / (det + 1e-9) # 防止除零
-        
-        x = np.zeros(3)
+        inv_det = 1.0 / (det + 1e-12) 
+
+        x = np.zeros(3, dtype=float)
         x[0] = ((e*i - f*h)*omega[0] + (c*h - b*i)*omega[1] + (b*f - c*e)*omega[2]) * inv_det
         x[1] = ((f*g - d*i)*omega[0] + (a*i - c*g)*omega[1] + (c*d - a*f)*omega[2]) * inv_det
         x[2] = ((d*h - e*g)*omega[0] + (g*b - a*h)*omega[1] + (a*e - b*d)*omega[2]) * inv_det
-        
-        # 4. 最后左乘 J.T
+
         return J.T @ x
     
     def init_joints(self, joints):

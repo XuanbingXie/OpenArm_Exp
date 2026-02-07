@@ -17,6 +17,8 @@ import sys
 import signal
 import numpy as np
 import socket
+import gc
+import tracemalloc
 from scipy.spatial.transform import Rotation as R
 
 from shoulder_solver import IncrementalShoulderSolver
@@ -24,6 +26,7 @@ from gripper_controller import GripperController
 from writer import Writer
 from contants import LEFT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE, RIGHT_JOINTS_MIN_VALUE, RIGHT_JOINTS_MAX_VALUE
 import rebocap_ws_sdk
+
 
 class ReboCapUdpSender:
     """Sends RoboCap joint angles via UDP"""
@@ -56,10 +59,12 @@ class ReboCapUdpSender:
         self.interval = 1.0 / self.send_freq
         # Set process priority 
         p = psutil.Process(os.getpid())
-        p.nice(psutil.HIGH_PRIORITY_CLASS) # for wins
+        p.nice(psutil.HIGH_PRIORITY_CLASS) # for windows
         # Set timer resolution to 1ms
         self.winmm = ctypes.WinDLL('winmm')
         self.winmm.timeBeginPeriod(1)
+        # Disable garbage collection
+        gc.disable()  
 
         # Pose storage for interpolation(debug)
         self.last_pose = None
@@ -67,7 +72,7 @@ class ReboCapUdpSender:
         self.cur_pose = None
         self.cur_timestamp = None
         self.pose_lock = threading.Lock()
-        self.key_times = [0, 1.2]
+        self.key_times = [0, 1.0]
 
         # Create UDP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -114,26 +119,6 @@ class ReboCapUdpSender:
             self.last_timestamp = self.cur_timestamp
             self.cur_pose = pose24  
             self.cur_timestamp = time.perf_counter()
-
-        # # Frequency tracking for on_pose_data
-        # self.on_pose_data_count += 1
-        # current_time = time.time()
-        # if self.last_pose_data_time > 0:
-        #     interval = current_time - self.last_pose_data_time
-        #     self.min_pose_data_interval = min(self.min_pose_data_interval, interval)
-        #     self.max_pose_data_interval = max(self.max_pose_data_interval, interval)
-
-        # if current_time - self.frequency_pose_start_time >= self.frequency_print_interval:
-        #     on_pose_freq = self.on_pose_data_count / (current_time - self.frequency_pose_start_time)
-        #     print(f"on_pose_data frequency: {on_pose_freq:.2f} Hz, min_interval: {self.min_pose_data_interval:.4f}s, max_interval: {self.max_pose_data_interval:.4f}s")
-        #     self.on_pose_data_count = 0
-        #     self.frequency_pose_start_time = current_time
-        #     self.min_pose_data_interval = 1.0
-        #     self.max_pose_data_interval = 0.0
-        # self.last_pose_data_time = current_time
-        # if self.debug:
-        #     pre_joints = self.map_to_openarm_joints_no_incre_solver(pose24)
-        #     self.writer.record(now, pre_joints, pre_joints)
     
     def send_udp(self, timestamp, joint_angles):
         # Pack and send raw float32 data (timestamp, 14 joints, left_grip, right_grip)
@@ -194,30 +179,12 @@ class ReboCapUdpSender:
             if cur_pose is not None and last_pose is not None and cur_ts is not None and last_ts is not None:
                 duration = cur_ts - last_ts
                 if duration > 0:
-
-                    # start_time = time.perf_counter()
                     now = time.perf_counter()
                     alpha = (now - duration - last_ts) / duration
                     alpha = np.clip(alpha, self.key_times[0], self.key_times[1])
                     interp_pose = self.interpolate_pose(last_pose, cur_pose, alpha)
                     joint_angles = self.map_to_openarm_joints_interp(interp_pose)
                     self.send_udp(now, joint_angles)
-                    
-                    # cur_time = time.perf_counter()
-                    # cur_interval = cur_time - start_time
-                    # self.min_send_udp_interval = min(self.min_send_udp_interval, cur_interval)
-                    # self.max_send_udp_interval = max(self.max_send_udp_interval, cur_interval)
-                    # if (cur_time - self.frequency_send_udp_start_time) >= self.frequency_print_interval:
-                    #     print(f"Sender: min_interval: {self.min_send_udp_interval:.4f}s, max_interval: {self.max_send_udp_interval:.4f}s")
-                    #     self.min_send_udp_interval = 1.0
-                    #     self.max_send_udp_interval = 0.0
-                    #     self.frequency_send_udp_start_time = cur_time
-
-
-                    # Record pre and post interpolation joints for debug
-                    if self.debug:
-                        pre_joints = self.map_to_openarm_joints_no_incre_solver(cur_pose)
-                        self.writer.record(now, pre_joints, joint_angles)
                 else:
                     print(f"Warning: Non-positive duration between poses, duration is {duration}")
             next_time += self.interval
@@ -274,7 +241,6 @@ class ReboCapUdpSender:
         left_shoulder = (R.from_quat(left_collar) * R.from_quat(left_shoulder)).as_quat()
         right_shoulder = (R.from_quat(right_collar) * R.from_quat(right_shoulder)).as_quat()
 
-
         ## ----------------For left arm--------------------
         if (not self.l_shoulder_initialized):
             # Euler angle decomposition
@@ -294,7 +260,6 @@ class ReboCapUdpSender:
         z, y, _ = l_wrist.as_euler('ZYX')
         l_j6 = -y
         l_j7 = z
-
 
         ## ----------------For right arm--------------------
         if (not self.r_shoulder_initialized):
@@ -331,13 +296,6 @@ class ReboCapUdpSender:
         joints = [l_j1, l_j2, l_j3, l_j4, l_j5, l_j6, l_j7,
                   r_j1, r_j2, r_j3, r_j4, r_j5, r_j6, r_j7]
         joints = np.clip(joints, LEFT_JOINTS_MIN_VALUE+RIGHT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE+RIGHT_JOINTS_MAX_VALUE).tolist()
-
-        # self.total_updates += 1
-        # if self.debug and self.total_updates % self.print_interval == 0:
-        #     print(f"Debug Left Joints(Not clip): {l_j1:.3f}, {l_j2:.3f}, {l_j3:.3f}, {l_j4:.3f}, {l_j5:.3f}, {l_j6:.3f}, {l_j7:.3f}")
-        #     print(f"Debug Left Joints(Clipped): {joints[0]:.3f}, {joints[1]:.3f}, {joints[2]:.3f}, {joints[3]:.3f}, {joints[4]:.3f}, {joints[5]:.3f}, {joints[6]:.3f}")
-        #     print(f"Debug Right Joints(Not clip): {r_j1:.3f}, {r_j2:.3f}, {r_j3:.3f}, {r_j4:.3f}, {r_j5:.3f}, {r_j6:.3f}, {r_j7:.3f}")
-        #     print(f"Debug Right Joints(Clipped): {joints[7]:.3f}, {joints[8]:.3f}, {joints[9]:.3f}, {joints[10]:.3f}, {joints[11]:.3f}, {joints[12]:.3f}, {joints[13]:.3f}")
         
         return joints
 
@@ -441,8 +399,10 @@ class ReboCapUdpSender:
         except:
             pass
 
-        # 恢复计时器精度
+        # Restore 
         self.winmm.timeEndPeriod(1)
+        gc.enable()
+        gc.collect()
 
 def main():
     print("=" * 60)
@@ -451,7 +411,7 @@ def main():
     print()
     
     # Parse command line arguments
-    udp_host = '192.168.0.13' ## Default to broadcast
+    udp_host = '192.168.0.101' ## Default to broadcast
     udp_port = 5678
     rebocap_port = 7690
     

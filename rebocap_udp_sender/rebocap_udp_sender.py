@@ -41,17 +41,8 @@ class ReboCapUdpSender:
         self.print_interval = 60
         
         # Frequency tracking
-        self.on_pose_data_count = 0
         self.send_udp_count = 0
-        self.min_send_udp_interval = 1.0
-        self.max_send_udp_interval = 0.0
         self.frequency_udp_start_time = time.perf_counter()
-        self.frequency_send_udp_start_time = time.perf_counter()
-
-        self.frequency_pose_start_time = time.time()
-        self.last_pose_data_time = -1
-        self.min_pose_data_interval = 1.0
-        self.max_pose_data_interval = 0.0
         self.frequency_print_interval = 1  # seconds
 
         # Send frequency
@@ -358,11 +349,11 @@ class ReboCapUdpSender:
         r_elbow = R.from_quat(right_elbow, scalar_first=False)
         z, _, x = r_elbow.as_euler('ZYX')
         r_j4 = z
-        r_j5 = -x - (np.pi/4)
+        r_j5 = -x
         r_wrist = R.from_quat(right_wrist, scalar_first=False)
         z, y, _ = r_wrist.as_euler('ZYX')
-        r_j6 = -z
-        r_j7 = -y
+        r_j6 = -y
+        r_j7 = z
 
         joints = [l_j1, l_j2, l_j3, l_j4, l_j5, l_j6, l_j7,
                   r_j1, r_j2, r_j3, r_j4, r_j5, r_j6, r_j7]

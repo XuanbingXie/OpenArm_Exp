@@ -18,7 +18,7 @@ import signal
 import numpy as np
 import socket
 import gc
-import tracemalloc
+from copy import deepcopy
 from scipy.spatial.transform import Rotation as R
 
 from shoulder_solver import IncrementalShoulderSolver
@@ -104,12 +104,17 @@ class ReboCapUdpSender:
         self.running = False
     
     def on_pose_data(self, sdk, tran, pose24, static_index, ts):
-        """Callback when new pose data is received from RoboCap"""
+        """Callback when new pose data is received from ReboCap"""
         with self.pose_lock:
             self.last_pose = self.cur_pose
             self.last_timestamp = self.cur_timestamp
-            self.cur_pose = pose24  
+            self.cur_pose = deepcopy(pose24)  
             self.cur_timestamp = time.perf_counter()
+        for i in range(24):
+            pose24[i].clear()
+        pose24.clear()
+        tran.clear()
+
     
     def send_udp(self, timestamp, joint_angles):
         # Pack and send raw float32 data (timestamp, 14 joints, left_grip, right_grip)
@@ -139,12 +144,12 @@ class ReboCapUdpSender:
         
         # Frequency tracking for send_udp
         self.send_udp_count += 1
-        current_time = time.time()
-        if current_time - self.frequency_udp_start_time >= self.frequency_print_interval:
-            send_freq = self.send_udp_count / (current_time - self.frequency_udp_start_time)
-            print(f"send_udp frequency: {send_freq:.2f} Hz")
-            self.send_udp_count = 0
-            self.frequency_udp_start_time = current_time
+        # current_time = time.time()
+        # if current_time - self.frequency_udp_start_time >= self.frequency_print_interval:
+        #     send_freq = self.send_udp_count / (current_time - self.frequency_udp_start_time)
+        #     print(f"send_udp frequency: {send_freq:.2f} Hz")
+        #     self.send_udp_count = 0
+        #     self.frequency_udp_start_time = current_time
 
     def send_loop(self):
         """Send loop running at high frequency with interpolation"""

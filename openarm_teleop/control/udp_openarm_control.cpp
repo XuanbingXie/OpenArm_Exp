@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
         std::string arm_mode = "dual";
         std::string can_interface1 = "can1";
         std::string can_interface2 = "can0";
-        std::string listen_ip = "192.168.0.13";
+        std::string listen_ip = "192.168.0.101";
         int udp_port = 5678;
 
         if (argc < 2) {

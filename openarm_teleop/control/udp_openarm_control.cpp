@@ -48,9 +48,10 @@ public:
     UdpReceiverThread(std::shared_ptr<RobotSystemState> left_robot_state,
                       std::shared_ptr<RobotSystemState> right_robot_state,
                       UdpJointReceiver* receiver,
+                      bool use_manus_for_gripper,
                       double hz = 100.0, bool need_sleep = false)
         : PeriodicTimerThread(hz, need_sleep), left_robot_state_(left_robot_state), right_robot_state_(right_robot_state),
-          receiver_(receiver), update_count_(0), hz_(hz) {}
+          receiver_(receiver), use_manus_for_gripper_(use_manus_for_gripper), update_count_(0), hz_(hz) {}
 
 protected:
     void before_start() override {
@@ -95,20 +96,22 @@ protected:
         
         
         // Set gripper states (for Manus, position control)
-        if (left_robot_state_) {
-            std::vector<JointState> left_gripper_states(1);
-            left_gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_left);
-            left_gripper_states[0].velocity = 0.0;
-            left_gripper_states[0].effort = 0.0;
-            left_robot_state_->hand_state().set_all_references(left_gripper_states);
-        }
-        
-        if (right_robot_state_) {
-            std::vector<JointState> right_gripper_states(1);
-            right_gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_right);
-            right_gripper_states[0].velocity = 0.0;
-            right_gripper_states[0].effort = 0.0;
-            right_robot_state_->hand_state().set_all_references(right_gripper_states);
+        if (use_manus_for_gripper_) {
+            if (left_robot_state_) {
+                std::vector<JointState> left_gripper_states(1);
+                left_gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_left);
+                left_gripper_states[0].velocity = 0.0;
+                left_gripper_states[0].effort = 0.0;
+                left_robot_state_->hand_state().set_all_references(left_gripper_states);
+            }
+            
+            if (right_robot_state_) {
+                std::vector<JointState> right_gripper_states(1);
+                right_gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_right);
+                right_gripper_states[0].velocity = 0.0;
+                right_gripper_states[0].effort = 0.0;
+                right_robot_state_->hand_state().set_all_references(right_gripper_states);
+            }
         }
 
         // // For debug
@@ -158,6 +161,7 @@ protected:
     }
 
 private:
+    bool use_manus_for_gripper_;
     std::shared_ptr<RobotSystemState> left_robot_state_;
     std::shared_ptr<RobotSystemState> right_robot_state_;
     UdpJointReceiver* receiver_;
@@ -347,7 +351,7 @@ int main(int argc, char** argv) {
         // Load control parameters from YAML
         std::cout << "\n[INFO] Loading control parameters..." << std::endl;
         YamlLoader loader("config/follower.yaml");
-        bool debug = loader.get_string("Debug") == "enabled" ? true : false;
+        bool debug = loader.get_bool("Debug");
         std::vector<double> l_kp = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Kp");
         std::vector<double> l_kd = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Kd");
         std::vector<double> l_Fc = loader.get_vector_by_two_levels("FollowerArmParam", "Left", "Fc");
@@ -383,7 +387,8 @@ int main(int argc, char** argv) {
 
 
         // Set need sleep to false, hz is not useful
-        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, UPD_RECEIVER_FREQUENCY, false);
+        bool use_manus_for_gripper = loader.get_bool("UseManusForGripper");
+        UdpReceiverThread udp_thread(left_robot_state, right_robot_state, &udp_receiver, use_manus_for_gripper, UPD_RECEIVER_FREQUENCY, false);
         udp_thread.start_thread();
         std::cout << "[INFO] UDP receiver loaded" << std::endl;
         std::cout << "Receiving joint angles via UDP on port " << udp_port << std::endl;

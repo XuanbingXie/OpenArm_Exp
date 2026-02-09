@@ -306,7 +306,6 @@ bool Control::AdjustPosition(void) {
         kp_arm_temp.push_back(soft_kp_[i]);
     }
     std::vector<double> kd_arm_temp = {1.2, 1.2, 1.2, 1.2, 0.3, 0.2, 0.3};
-
     std::vector<double> kp_hand_temp = {10.0};
     std::vector<double> kd_hand_temp = {0.5};
 

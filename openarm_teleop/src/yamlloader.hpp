@@ -48,6 +48,13 @@ public:
         return root_[key].as<std::string>();
     }
 
+    bool get_bool(const std::string& key) const {
+        if (!root_[key]) {
+            throw std::runtime_error("Key '" + key + "' not found.");
+        }
+        return root_[key].as<bool>();
+    }
+    
     // Check if key exists
     bool has(const std::string& node_name, const std::string& key) const {
         return root_[node_name] && root_[node_name][key];

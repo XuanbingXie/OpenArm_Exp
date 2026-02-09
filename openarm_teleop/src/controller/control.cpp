@@ -239,8 +239,6 @@ bool Control::unilateral_step() {
         openarm_->get_gripper().mit_control_all(hand_cmds);
 
         openarm_->recv_all(200);
-
-        return true;
     }
 
     return true;

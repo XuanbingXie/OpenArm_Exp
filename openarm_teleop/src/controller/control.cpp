@@ -179,7 +179,10 @@ bool Control::unilateral_step() {
         //         }
         //     }
         // }
-        
+        for (size_t i=0; i<arm_dof; ++i) {
+            joint_arm_states_ref[i].effort = gravity[i] + friction[i];
+        }
+
         // Joint → Motor
         std::vector<MotorState> arm_motor_refs =
         openarmjointconverter_->joint_to_motor(joint_arm_states_ref);

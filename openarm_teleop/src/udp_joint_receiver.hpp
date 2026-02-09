@@ -35,8 +35,6 @@
 struct UdpFloatPacket {
     float timestamp;
     float joints[14];
-    float left_gripper;
-    float right_gripper;
 };
 #pragma pack(pop)
 
@@ -126,9 +124,6 @@ public:
             r_joints = right_joint_angles_;
             return true;
         } 
-        // else {
-        //     std::cout << "[UdpJointReceiver] No packet received yet!" <<  std::endl;
-        // }
         return false;
     }
 
@@ -171,8 +166,6 @@ private:
             right_joint_angles_[i] = static_cast<double>(pkt.joints[num_joints_ + i]);
         }
 
-        left_gripper_torque_ = static_cast<double>(pkt.left_gripper);
-        right_gripper_torque_ = static_cast<double>(pkt.right_gripper);
         timestamp_ = static_cast<double>(pkt.timestamp);
         ++sequence_number_;
     }

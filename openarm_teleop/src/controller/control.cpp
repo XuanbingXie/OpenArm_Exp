@@ -47,7 +47,7 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
         filters_.push_back(LowPassFilter(filter_alphas[i]));
     }
     
-        // Open joint writer file
+    // Open joint writer file
     if (arm_type_ == "left_arm") joint_writer_.open("joint_angles_left.txt", std::ios::out);
     else joint_writer_.open("joint_angles_right.txt", std::ios::out);
     if (joint_writer_.is_open()) {
@@ -55,11 +55,19 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
                       << "arm_cur_0,arm_cur_1,arm_cur_2,arm_cur_3,arm_cur_4,arm_cur_5,arm_cur_6,"
                       << "hand_ref_0,hand_cur_0" << std::endl;
     }
+    // Start async writer thread
+    joint_writer_running_.store(true);
+    joint_writer_thread_ = std::thread(&Control::joint_writer_loop, this);
 }
 
 Control::~Control() {
     std::cout << "Control destructed " << std::endl;
+    // Stop writer thread and flush remaining entries
+    joint_writer_running_.store(false);
+    joint_writer_cv_.notify_all();
+    if (joint_writer_thread_.joinable()) joint_writer_thread_.join();
     if (joint_writer_.is_open()) {
+        joint_writer_.flush();
         joint_writer_.close();
     }
     delete openarmjointconverter_;
@@ -210,7 +218,8 @@ bool Control::unilateral_step() {
         if (debug) {
             static int count = 0;
             ++count;
-            write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
+            if (count % 5 == 0)
+                write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
             if (count % 500 == 0) {
                 if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
                 else std::cout << "[Follower Right Arm] " << std::endl;
@@ -401,35 +410,44 @@ bool Control::DetectVibration(const double* velocity, bool* what_axis) {
 
 void Control::write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
                                          const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current) {
-    if (!joint_writer_.is_open()) return;
-
-    static long long timestamp = 0;
-    timestamp++;
-
-    joint_writer_ << timestamp;
-
+    // Build formatted line and enqueue for background writer
+    std::ostringstream ss;
+    static thread_local long long timestamp = 0;
+    ++timestamp;
+    ss << timestamp;
     // Write arm reference positions
     for (const auto& joint : arm_ref) {
-        joint_writer_ << "," << std::fixed << std::setprecision(6) << joint.position;
+        ss << "," << std::fixed << std::setprecision(6) << joint.position;
     }
-
     // Write arm current positions
-    for (const auto& joint : arm_current) {    
-        joint_writer_ << "," << std::fixed << std::setprecision(6) << joint.position;
+    for (const auto& joint : arm_current) {
+        ss << "," << std::fixed << std::setprecision(6) << joint.position;
     }
+    ss << '\n';
 
-    // // Write hand reference and current positions
-    // if (!hand_ref.empty()) {
-    //     joint_writer_ << "," << std::fixed << std::setprecision(6) << hand_ref[0].position;
-    // } else {
-    //     joint_writer_ << ",0.0";
-    // }
+    std::unique_lock<std::mutex> lk(joint_writer_mutex_);
+    if (joint_writer_queue_.size() >= joint_writer_max_queue_) {
+        joint_writer_queue_.pop_front();
+        std::cout << "[WARNING] Joint writer queue full, dropping oldest entry" << std::endl;
+    }
+    joint_writer_queue_.push_back(ss.str());
+    lk.unlock();
+    joint_writer_cv_.notify_one();
+}
 
-    // if (!hand_current.empty()) {
-    //     joint_writer_ << "," << std::fixed << std::setprecision(6) << hand_current[0].position;
-    // } else {
-    //     joint_writer_ << ",0.0";
-    // }
-
-    joint_writer_ << std::endl;
+void Control::joint_writer_loop() {
+    std::unique_lock<std::mutex> lk(joint_writer_mutex_);
+    while (joint_writer_running_.load() || !joint_writer_queue_.empty()) {
+        joint_writer_cv_.wait(lk, [this]() { return !joint_writer_running_.load() || !joint_writer_queue_.empty(); });
+        while (!joint_writer_queue_.empty()) {
+            std::string line = std::move(joint_writer_queue_.front());
+            joint_writer_queue_.pop_front();
+            lk.unlock();
+            if (joint_writer_.is_open()) {
+                joint_writer_ << line;
+            }
+            lk.lock();
+        }
+    }
+    if (joint_writer_.is_open()) joint_writer_.flush();
 }

@@ -26,6 +26,11 @@
 #include <controller/dynamics.hpp>
 #include <deque>
 #include <fstream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <sstream>
 #include <joint_state_converter.hpp>
 #include <string>
 #include <memory>
@@ -135,8 +140,15 @@ class Control {
             void write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
                                              const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current);
             
-            // Joint angle writer
+            // Joint angle writer (asynchronous)
             std::ofstream joint_writer_;
+            std::thread joint_writer_thread_;
+            std::mutex joint_writer_mutex_;
+            std::condition_variable joint_writer_cv_;
+            std::deque<std::string> joint_writer_queue_;
+            std::atomic<bool> joint_writer_running_{false};
+            size_t joint_writer_max_queue_{10000};
+            void joint_writer_loop();
             
         };
         

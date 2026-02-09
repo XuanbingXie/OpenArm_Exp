@@ -42,7 +42,6 @@ void signal_handler(int signal) {
     }
 }
 
-
 // Thread to read joint data from UDP for dual arms
 class UdpReceiverThread : public PeriodicTimerThread {
 public:
@@ -64,7 +63,6 @@ protected:
     }
 
     void on_timer() override {
-        
         std::vector<double> left_joint_angles;
         std::vector<double> right_joint_angles;
         
@@ -80,14 +78,6 @@ protected:
                     left_joint_states[i].effort = 0.0;
                 }
                 left_robot_state_->arm_state().set_all_references(left_joint_states);
-                
-                // // Update left gripper (for gui, torque control)
-                // double left_gripper_tor = receiver_->get_left_gripper_torque();
-                // std::vector<JointState> left_gripper_states(1);
-                // left_gripper_states[0].position = 0;
-                // left_gripper_states[0].velocity = 0.0;
-                // left_gripper_states[0].effort = left_gripper_tor;
-                // left_robot_state_->hand_state().set_all_references(left_gripper_states);
             }
             
             // ----------------------Right-------------------------
@@ -100,14 +90,6 @@ protected:
                     right_joint_states[i].effort = 0.0;
                 }
                 right_robot_state_->arm_state().set_all_references(right_joint_states);
-                
-                // // Update right gripper (for gui, torque control)
-                // double right_gripper_tor = receiver_->get_right_gripper_torque();
-                // std::vector<JointState> right_gripper_states(1);
-                // right_gripper_states[0].position = 0;
-                // right_gripper_states[0].velocity = 0.0;
-                // right_gripper_states[0].effort = right_gripper_tor;
-                // right_robot_state_->hand_state().set_all_references(right_gripper_states);
             }
         }
         
@@ -129,7 +111,6 @@ protected:
             right_robot_state_->hand_state().set_all_references(right_gripper_states);
         }
 
-
         // // For debug
         // if (left_robot_state_) {
         //     static std::vector<JointState> debug_left_joint_angles{
@@ -147,7 +128,6 @@ protected:
         //     right_robot_state_->arm_state().set_all_references(debug_right_joint_angles);
         // }
 
-            
         ++on_timer_count_;
         auto now_tp = std::chrono::steady_clock::now();
         // Print frequency statistics every 1 second
@@ -230,7 +210,7 @@ int main(int argc, char** argv) {
         std::string arm_mode = "dual";
         std::string can_interface1 = "can1";
         std::string can_interface2 = "can0";
-        std::string listen_ip = "192.168.0.101";
+        std::string listen_ip = "192.168.1.101";
         int udp_port = 5678;
 
         if (argc < 2) {
@@ -310,7 +290,7 @@ int main(int argc, char** argv) {
         Dynamics* right_arm_dynamics = nullptr;
         if (use_right_arm) {
             std::string root_link = "openarm_body_link0";
-            std::string right_leaf_link = "right_hand_base_link";
+            std::string right_leaf_link = "openarm_right_hand";
 
             std::cout << "[INFO] Initializing dynamics model for right arm..." << std::endl;
             right_arm_dynamics = new Dynamics(urdf_path, root_link, right_leaf_link);

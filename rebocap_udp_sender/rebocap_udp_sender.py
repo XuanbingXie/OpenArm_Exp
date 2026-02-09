@@ -144,12 +144,12 @@ class ReboCapUdpSender:
         
         # Frequency tracking for send_udp
         self.send_udp_count += 1
-        # current_time = time.time()
-        # if current_time - self.frequency_udp_start_time >= self.frequency_print_interval:
-        #     send_freq = self.send_udp_count / (current_time - self.frequency_udp_start_time)
-        #     print(f"send_udp frequency: {send_freq:.2f} Hz")
-        #     self.send_udp_count = 0
-        #     self.frequency_udp_start_time = current_time
+        current_time = time.time()
+        if current_time - self.frequency_udp_start_time >= self.frequency_print_interval:
+            send_freq = self.send_udp_count / (current_time - self.frequency_udp_start_time)
+            print(f"send_udp frequency: {send_freq:.2f} Hz")
+            self.send_udp_count = 0
+            self.frequency_udp_start_time = current_time
 
     def send_loop(self):
         """Send loop running at high frequency with interpolation"""
@@ -283,11 +283,11 @@ class ReboCapUdpSender:
         r_elbow = R.from_quat(right_elbow, scalar_first=False)
         z, _, x = r_elbow.as_euler('ZYX')
         r_j4 = z
-        r_j5 = -x - (np.pi/4)
+        r_j5 = -x
         r_wrist = R.from_quat(right_wrist, scalar_first=False)
-        z, y, _ = r_wrist.as_euler('ZYX')
-        r_j6 = -z
-        r_j7 = -y
+        y, z, _ = r_wrist.as_euler('YZX')
+        r_j6 = -y
+        r_j7 = z
 
         joints = [l_j1, l_j2, l_j3, l_j4, l_j5, l_j6, l_j7,
                   r_j1, r_j2, r_j3, r_j4, r_j5, r_j6, r_j7]
@@ -407,7 +407,7 @@ def main():
     print()
     
     # Parse command line arguments
-    udp_host = '192.168.0.101' ## Default to broadcast
+    udp_host = '192.168.1.101' ## Default to broadcast
     udp_port = 5678
     rebocap_port = 7690
     

@@ -22,7 +22,6 @@ from copy import deepcopy
 from scipy.spatial.transform import Rotation as R
 
 from shoulder_solver import IncrementalShoulderSolver
-from gripper_controller import GripperController
 from writer import Writer
 from contants import LEFT_JOINTS_MIN_VALUE, LEFT_JOINTS_MAX_VALUE, RIGHT_JOINTS_MIN_VALUE, RIGHT_JOINTS_MAX_VALUE
 import rebocap_ws_sdk
@@ -87,10 +86,6 @@ class ReboCapUdpSender:
             self.cleanup()
             raise RuntimeError(f"Failed to connect to RoboCap (error code: {ret})")
 
-        # Initialize gripper controller
-        self.gripper_controller = GripperController()
-        # self.gripper_controller.start_gui()
-
         # Initialize writer for debug
         self.writer = Writer(debug=self.debug)
 
@@ -118,8 +113,6 @@ class ReboCapUdpSender:
     
     def send_udp(self, timestamp, joint_angles):
         # Pack and send raw float32 data (timestamp, 14 joints, left_grip, right_grip)
-        left_torque, right_torque = self.gripper_controller.get_torques()
-
         # Ensure joint_angles length is 14
         ja = np.asarray(joint_angles, dtype=np.float32)
         if ja.size < 14:
@@ -130,11 +123,9 @@ class ReboCapUdpSender:
         elif ja.size > 14:
             ja = ja[:14]
 
-        pkt = np.empty(1 + 14 + 2, dtype=np.float32)
+        pkt = np.empty(1 + 14, dtype=np.float32)
         pkt[0] = np.float32(timestamp)
         pkt[1:15] = ja
-        pkt[15] = np.float32(left_torque)
-        pkt[16] = np.float32(right_torque)
 
         try:
             self.sock.sendto(pkt.tobytes(), (self.udp_host, self.udp_port))

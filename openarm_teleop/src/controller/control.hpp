@@ -137,7 +137,7 @@ class Control {
             
             // Write joint angles to file
             bool debug{false};
-            void write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
+            void write_joint_property_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
                                              const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current);
             
             // Joint angle writer (asynchronous)

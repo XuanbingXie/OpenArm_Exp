@@ -53,7 +53,8 @@ Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynam
     if (joint_writer_.is_open()) {
         joint_writer_ << "timestamp,arm_ref_0,arm_ref_1,arm_ref_2,arm_ref_3,arm_ref_4,arm_ref_5,arm_ref_6,"
                       << "arm_cur_0,arm_cur_1,arm_cur_2,arm_cur_3,arm_cur_4,arm_cur_5,arm_cur_6,"
-                      << "hand_ref_0,hand_cur_0" << std::endl;
+                      << "hand_ref_0,hand_cur_0, arm_ref_tor_0, arm_ref_tor_1, arm_ref_tor_2, arm_ref_tor_3, arm_ref_tor_4, arm_ref_tor_5, arm_ref_tor_6," 
+                      << "arm_cur_tor_0, arm_cur_tor_1, arm_cur_tor_2, arm_cur_tor_3, arm_cur_tor_4, arm_cur_tor_5, arm_cur_tor_6"<< std::endl;
     }
     // Start async writer thread
     joint_writer_running_.store(true);
@@ -103,12 +104,12 @@ bool Control::unilateral_step() {
     // get motor status
     std::vector<MotorState> arm_motor_states;
     for (const auto& motor : openarm_->get_arm().get_motors()) {
-        arm_motor_states.push_back({motor.get_position(), motor.get_velocity(), 0.0});
+        arm_motor_states.push_back({motor.get_position(), motor.get_velocity(), motor.get_torque()});
     }
 
     std::vector<MotorState> gripper_motor_states;
     for (const auto& motor : openarm_->get_gripper().get_motors()) {
-        gripper_motor_states.push_back({motor.get_position(), motor.get_velocity(), 0.0});
+        gripper_motor_states.push_back({motor.get_position(), motor.get_velocity(), motor.get_torque()});
     }
 
     // convert joint to motor
@@ -163,22 +164,6 @@ bool Control::unilateral_step() {
             joint_arm_states_ref[i].position = filters_[i].update(joint_arm_states_ref[i].position);
         }
 
-        // **Just Test Torque**
-        // joint_arm_states_ref = joint_arm_states;
-        // joint_hand_states_ref = joint_gripper_states;
-        // // set gravity and friction comp joint torque value
-        // for (size_t i = 0; i < arm_dof; i++) {
-        //     if (arm_type_ == "left_arm") {
-        //         if(i < 3) {
-        //             joint_arm_states_ref[i].effort = gravity[i] + friction[i];
-        //         }
-        //     } else {
-        //         if (i < 4) {
-        //             if (i != 2) joint_arm_states_ref[i].effort = gravity[i] + friction[i];
-        //             else joint_arm_states_ref[i].effort = friction[i];
-        //         }
-        //     }
-        // }
         for (size_t i=0; i<arm_dof; ++i) {
             joint_arm_states_ref[i].effort = gravity[i] + friction[i];
         }
@@ -188,7 +173,6 @@ bool Control::unilateral_step() {
         openarmjointconverter_->joint_to_motor(joint_arm_states_ref);
         std::vector<MotorState> hand_motor_refs =
         openarmgripperjointconverter_->joint_to_motor(joint_hand_states_ref);
-        
 
         std::vector<openarm::damiao_motor::MITParam> arm_cmds;
         for (size_t i = 0; i < arm_motor_refs.size(); ++i) {
@@ -197,7 +181,6 @@ bool Control::unilateral_step() {
                                                                    arm_motor_refs[i].velocity,
                                                                    arm_motor_refs[i].effort});
         }
-
         std::vector<openarm::damiao_motor::MITParam> hand_cmds;
         hand_cmds.reserve(hand_motor_refs.size());
         for (size_t i = 0; i < hand_motor_refs.size(); ++i) {
@@ -222,7 +205,7 @@ bool Control::unilateral_step() {
             static int count = 0;
             ++count;
             if (count % 5 == 0)
-                write_joint_angles_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
+                write_joint_property_to_file(joint_arm_states_ref, joint_arm_states, joint_hand_states_ref, joint_gripper_states);
             if (count % 500 == 0) {
                 if (arm_type_  == "left_arm") std::cout << "[Follower Left Arm] " << std::endl;
                 else std::cout << "[Follower Right Arm] " << std::endl;
@@ -408,7 +391,7 @@ bool Control::DetectVibration(const double* velocity, bool* what_axis) {
     return vibration_detected;
 }
 
-void Control::write_joint_angles_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
+void Control::write_joint_property_to_file(const std::vector<JointState>& arm_ref, const std::vector<JointState>& arm_current,
                                          const std::vector<JointState>& hand_ref, const std::vector<JointState>& hand_current) {
     // Build formatted line and enqueue for background writer
     std::ostringstream ss;
@@ -422,6 +405,12 @@ void Control::write_joint_angles_to_file(const std::vector<JointState>& arm_ref,
     // Write arm current positions
     for (const auto& joint : arm_current) {
         ss << "," << std::fixed << std::setprecision(6) << joint.position;
+    }
+    for (const auto& joint: arm_ref) {
+        ss << "," << std::fixed << std::setprecision(6) << joint.effort;
+    }
+    for (const auto& joint: arm_current) {
+        ss << "," << std::fixed << std::setprecision(6) << joint.effort;
     }
     ss << '\n';
 

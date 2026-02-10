@@ -14,15 +14,14 @@
 
 #include <string.h>
 #include <unistd.h>
-
 #include <algorithm>
 #include <cmath>
-#include <controller/control.hpp>
-#include <controller/dynamics.hpp>
 #include <cstddef>
 #include <fstream>
 #include <iomanip>
 #include <thread>
+#include <controller/control.hpp>
+#include <controller/dynamics.hpp>
 
 Control::Control(openarm::can::socket::OpenArm* arm, Dynamics* dynamics_l, Dynamics* dynamics_f,
                  std::shared_ptr<RobotSystemState> robot_state, double Ts, int role,

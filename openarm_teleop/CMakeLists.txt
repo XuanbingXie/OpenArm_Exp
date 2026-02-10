@@ -44,8 +44,7 @@ endif()
 add_library(
   openarm_teleop_lib STATIC
   src/controller/dynamics.cpp src/controller/control.cpp
-  src/openarm_port/openarm_init.cpp src/openarm_port/joint_mapper.cpp
-  src/manus_interop.hpp)
+  src/openarm_port/openarm_init.cpp src/openarm_port/joint_mapper.cpp)
 
 target_include_directories(openarm_teleop_lib
                            PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -63,8 +62,7 @@ endif()
 target_link_libraries(
   openarm_teleop_lib
   PUBLIC OpenArmCAN::openarm_can Eigen3::Eigen ${orocos_kdl_LIBRARIES}
-  kdl_parser::kdl_parser urdfdom::urdfdom_model yaml-cpp::yaml-cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/lib/libManusSDK_Integrated.so)
+  kdl_parser::kdl_parser urdfdom::urdfdom_model yaml-cpp::yaml-cpp)
 
 
 # -----------------------------

@@ -28,7 +28,6 @@
 #include <udp_joint_receiver.hpp>
 #include <thread>
 #include <yamlloader.hpp>
-#include <manus_interop.hpp>
 
 
 
@@ -38,7 +37,6 @@ void signal_handler(int signal) {
     if (signal == SIGINT) {
         std::cout << "\nCtrl+C detected. Exiting loop..." << std::endl;
         keep_running = false;
-        keep_manus_running = false;
     }
 }
 
@@ -97,20 +95,23 @@ protected:
         
         // Set gripper states (for Manus, position control)
         if (use_manus_for_gripper_) {
-            if (left_robot_state_) {
-                std::vector<JointState> left_gripper_states(1);
-                left_gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_left);
-                left_gripper_states[0].velocity = 0.0;
-                left_gripper_states[0].effort = 0.0;
-                left_robot_state_->hand_state().set_all_references(left_gripper_states);
-            }
-            
-            if (right_robot_state_) {
-                std::vector<JointState> right_gripper_states(1);
-                right_gripper_states[0].position = thumb_dist_to_gripper_joint_pos(shared_thumb_index_distance_right);
-                right_gripper_states[0].velocity = 0.0;
-                right_gripper_states[0].effort = 0.0;
-                right_robot_state_->hand_state().set_all_references(right_gripper_states);
+            double left_gripper_pos, right_gripper_pos;
+            if (receiver_->get_gripper_pos(left_gripper_pos, right_gripper_pos)) {
+                if (left_robot_state_) {
+                    std::vector<JointState> left_gripper_states(1);
+                    left_gripper_states[0].position = left_gripper_pos;
+                    left_gripper_states[0].velocity = 0.0;
+                    left_gripper_states[0].effort = 0.0;
+                    left_robot_state_->hand_state().set_all_references(left_gripper_states);
+                }
+                
+                if (right_robot_state_) {
+                    std::vector<JointState> right_gripper_states;
+                    right_gripper_states[0].position = right_gripper_pos;
+                    right_gripper_states[1].velocity = 0.0;
+                    right_gripper_states[2].effort = 0.0;
+                    right_robot_state_->hand_state().set_all_references(right_gripper_states);
+                }
             }
         }
 
@@ -267,9 +268,6 @@ int main(int argc, char** argv) {
             std::cerr << "[ERROR] URDF file not found: " << urdf_path << std::endl;
             return 1;
         }
-
-        // Set up Manus
-        initialize_manus_sdk();
 
         // Determine which arms to initialize
         bool use_left_arm = (arm_mode == "dual" || arm_mode == "single_left");
@@ -442,8 +440,6 @@ int main(int argc, char** argv) {
         if (right_openarm) {
             right_openarm->disable_all();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        shutdown_manus_sdk();
         std::cout << "[INFO] Shutdown complete" << std::endl;
 
         // Cleanup

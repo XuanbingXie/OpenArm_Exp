@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <errno.h>
+#include <cstdint>
 #include <cstring>
 
 #include <atomic>
@@ -77,8 +78,13 @@ public:
         if (manus_socket_fd_ < 0) {
             throw std::runtime_error("Failed to create UDP socket for manus");
         }
+        int flag = 1;
+        setsockopt(manus_socket_fd_,SOL_SOCKET,SO_REUSEADDR,&flag,sizeof(flag));
+
         // Set socket to non-blocking mode
-        int flags = fcntl(manus_socket_fd_, F_GETFL, 0);
+        int flags = fcntl(socket_fd_, F_GETFL, 0);
+        fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK);
+        flags = fcntl(manus_socket_fd_, F_GETFL, 0);
         fcntl(manus_socket_fd_, F_SETFL, flags | O_NONBLOCK);
 
         // Bind to port (optionally to a specific listen IP)
@@ -113,7 +119,7 @@ public:
             close(socket_fd_);
             throw std::runtime_error(std::string("Failed to bind UDP socket to ") + listen_ip + ":" + std::to_string(port_));
         }
-        if (bind(socket_fd_, (struct sockaddr*)&manus_server_addr, sizeof(manus_server_addr)) < 0) {
+        if (bind(manus_socket_fd_, (struct sockaddr*)&manus_server_addr, sizeof(manus_server_addr)) < 0) {
             close(manus_socket_fd_);
             throw std::runtime_error(std::string("Failed to bind Manus UDP socket to port ") + std::to_string(MANUS_PORT));
         }
@@ -134,11 +140,11 @@ public:
     bool get_joints_angles(std::vector<double>& l_joints, std::vector<double>& r_joints) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
-        ssize_t recv_len = recvfrom(socket_fd_, buffer, sizeof(buffer) - 1, 0,
+        ssize_t recv_len = recvfrom(socket_fd_, buffer_, sizeof(buffer_) - 1, 0,
                                     (struct sockaddr*)&client_addr, &client_len);
 
         if (recv_len > 0) {
-            buffer[recv_len] = '\0';
+            buffer_[recv_len] = '\0';
             
             // Debug: print first packet info
             static bool first_packet = true;
@@ -151,7 +157,7 @@ public:
             }
             
             // Extract pack data
-            process_data(buffer, recv_len);
+            process_data(buffer_, recv_len);
 
             l_joints = left_joint_angles_;
             r_joints = right_joint_angles_;
@@ -163,11 +169,11 @@ public:
     bool get_gripper_pos(double& l_pos, double& r_pos) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
-        ssize_t recv_len = recvfrom(manus_socket_fd_, buffer, sizeof(buffer) - 1, 0,
+        ssize_t recv_len = recvfrom(manus_socket_fd_, buffer_, sizeof(buffer_) - 1, 0,
                                     (struct sockaddr*)&client_addr, &client_len);
 
         if (recv_len > 0) {
-            buffer[recv_len] = '\0';
+            buffer_[recv_len] = '\0';
             
             // Debug: print first packet info
             static bool first_packet = true;
@@ -178,9 +184,9 @@ public:
                             << ntohs(client_addr.sin_port) << std::endl;
                 first_packet = false;
             }
-            
+
             // Extract pack data
-            process_manus_data(buffer, recv_len);
+            process_manus_data(buffer_, recv_len);
 
             l_pos = left_gripper_pos_;
             r_pos = right_gripper_pos_;
@@ -189,7 +195,7 @@ public:
         return false;
     }
 
-private:
+// private:
     void process_data(const char* data, size_t length) {
         const size_t expected_bytes = sizeof(UdpFloatPacket);
         if (length < expected_bytes) {
@@ -224,7 +230,6 @@ private:
 
         UdpManusPacket pkt;
         std::memcpy(&pkt, data, expected_bytes);
-
         if (pkt.left_glove_id != 0) {
             float l_dist = sqrtf(powf(pkt.left_sensor_transforms[0][0]-pkt.left_sensor_transforms[1][0], 2) +
                                     powf(pkt.left_sensor_transforms[0][1]-pkt.left_sensor_transforms[1][1], 2) +
@@ -253,7 +258,7 @@ private:
     std::atomic<bool> running_;
 
     // Protected data
-    char buffer[65535];
+    char buffer_[65535];
     uint64_t sequence_number_;
     double timestamp_;
     std::vector<double> left_joint_angles_;
